@@ -104,6 +104,13 @@ class RAGLiteConfig:
     search_method: SearchMethod = field(default=_vector_search, compare=False)
     self_query: bool = False
     agentic_iterations: int = 3
+    # Low-confidence secondary retrieval: when the top rerank score is below the confidence
+    # threshold, retrieve again with an expanded candidate pool (`secondary_retrieval_multiplier`
+    # times the original pool). The confidence signal is the rerank score; without a reranker the
+    # secondary pass is skipped.
+    secondary_retrieval: bool = True
+    rerank_confidence_threshold: float = 0.3
+    secondary_retrieval_multiplier: int = 2
     # Hybrid search config: RRF weights for the vector and keyword rankings.
     hybrid_vector_weight: float = 0.75
     hybrid_keyword_weight: float = 0.25
