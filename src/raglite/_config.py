@@ -104,6 +104,9 @@ class RAGLiteConfig:
     search_method: SearchMethod = field(default=_vector_search, compare=False)
     self_query: bool = False
     agentic_iterations: int = 3
+    # Hybrid search config: RRF weights for the vector and keyword rankings.
+    hybrid_vector_weight: float = 0.75
+    hybrid_keyword_weight: float = 0.25
     # Low-confidence secondary retrieval: when the top rerank score is below the confidence
     # threshold, retrieve again with an expanded candidate pool (`secondary_retrieval_multiplier`
     # times the original pool). The confidence signal is the rerank score; without a reranker the
@@ -111,9 +114,9 @@ class RAGLiteConfig:
     secondary_retrieval: bool = True
     rerank_confidence_threshold: float = 0.3
     secondary_retrieval_multiplier: int = 2
-    # Hybrid search config: RRF weights for the vector and keyword rankings.
-    hybrid_vector_weight: float = 0.75
-    hybrid_keyword_weight: float = 0.25
+    # Query intent routing: route each query to the keyword or hybrid search method based on
+    # lightweight heuristics (keyword-heavy short queries go to BM25, everything else to hybrid).
+    search_router: bool = False
     # Retrieval result cache: TTL in seconds and max number of cached entries.
     retrieval_cache_ttl: float = 300.0
     retrieval_cache_max_size: int = 256
