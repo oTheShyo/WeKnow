@@ -104,6 +104,9 @@ class RAGLiteConfig:
     search_method: SearchMethod = field(default=_vector_search, compare=False)
     self_query: bool = False
     agentic_iterations: int = 3
+    # Hybrid search config: RRF weights for the vector and keyword rankings.
+    hybrid_vector_weight: float = 0.75
+    hybrid_keyword_weight: float = 0.25
     # Retrieval result cache: TTL in seconds and max number of cached entries.
     retrieval_cache_ttl: float = 300.0
     retrieval_cache_max_size: int = 256

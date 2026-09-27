@@ -277,12 +277,24 @@ def hybrid_search(  # noqa: PLR0913
     *,
     num_results: int = 3,
     oversample: int = 2,
-    vector_search_weight: float = 0.75,
-    keyword_search_weight: float = 0.25,
+    vector_search_weight: float | None = None,
+    keyword_search_weight: float | None = None,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
-    """Search chunks by combining ANN vector search with BM25 keyword search."""
+    """Search chunks by combining ANN vector search with BM25 keyword search.
+
+    The RRF weights default to the config values (`hybrid_vector_weight` /
+    `hybrid_keyword_weight`) so that the weights are configurable instead of hardcoded.
+    """
+    # Read the config and resolve the weights.
+    config = config or RAGLiteConfig()
+    vector_search_weight = (
+        config.hybrid_vector_weight if vector_search_weight is None else vector_search_weight
+    )
+    keyword_search_weight = (
+        config.hybrid_keyword_weight if keyword_search_weight is None else keyword_search_weight
+    )
     # Run both searches.
     vs_chunk_ids, _ = vector_search(
         query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
@@ -379,10 +391,14 @@ def retrieve_chunk_spans(
     return chunk_spans
 
 
-def rerank_chunks(
+def rerank_chunks_with_scores(
     query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
-) -> list[Chunk]:
-    """Rerank chunks according to their relevance to a given query."""
+) -> tuple[list[Chunk], list[float] | None]:
+    """Rerank chunks and return them with their relevance scores.
+
+    Returns the chunks in retrieval order with scores None when no reranker is configured, or when
+    reranking fails (degrade to retrieval order instead of failing the whole search).
+    """
     # Retrieve the chunks.
     config = config or RAGLiteConfig()
     chunks: list[Chunk] = (
@@ -392,7 +408,7 @@ def rerank_chunks(
     )
     # Exit early if no reranker is configured or if the input is empty.
     if not config.reranker or not chunks:
-        return chunks
+        return chunks, None
     # Select the reranker.
     if isinstance(config.reranker, dict):
         # Detect the languages of the chunks and queries.
@@ -408,10 +424,24 @@ def rerank_chunks(
     else:
         # A specific reranker was configured.
         reranker = config.reranker
-    # Rerank the chunks.
+    # Rerank the chunks, degrading to retrieval order on failure.
     if reranker:
-        results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
-        chunks = [chunks[result.doc_id] for result in results.results]
+        try:
+            results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
+        except Exception:
+            logger.warning("Reranking failed; falling back to retrieval order.", exc_info=True)
+        else:
+            reranked_chunks = [chunks[result.doc_id] for result in results.results]
+            rerank_scores = [float(result.score) for result in results.results]
+            return reranked_chunks, rerank_scores
+    return chunks, None
+
+
+def rerank_chunks(
+    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
+) -> list[Chunk]:
+    """Rerank chunks according to their relevance to a given query."""
+    chunks, _ = rerank_chunks_with_scores(query, chunk_ids, config=config)
     return chunks
 
 
