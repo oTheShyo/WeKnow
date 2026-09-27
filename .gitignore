@@ -81,6 +81,12 @@ uv.lock
 
 # evals
 evals/
+# Local benchmark artifacts
+*.parquet
+*.wal
+*.log
+*.db.lock
+bench_results.json
 
 # WorkBuddy workspace data
 .workbuddy/
