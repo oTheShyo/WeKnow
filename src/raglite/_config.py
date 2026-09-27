@@ -104,3 +104,6 @@ class RAGLiteConfig:
     search_method: SearchMethod = field(default=_vector_search, compare=False)
     self_query: bool = False
     agentic_iterations: int = 3
+    # Retrieval result cache: TTL in seconds and max number of cached entries.
+    retrieval_cache_ttl: float = 300.0
+    retrieval_cache_max_size: int = 256

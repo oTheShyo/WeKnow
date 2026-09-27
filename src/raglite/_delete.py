@@ -11,6 +11,7 @@ from sqlalchemy.orm import load_only
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
 
+from raglite._cache import get_retrieval_cache
 from raglite._config import RAGLiteConfig
 from raglite._database import (
     Chunk,
@@ -251,6 +252,9 @@ def delete_documents(
                 invalidate_query_adapter=invalidate_query_adapter,
             )
 
+    # Any index mutation invalidates the retrieval result cache.
+    if deleted_count:
+        get_retrieval_cache().clear()
     return deleted_count
 
 

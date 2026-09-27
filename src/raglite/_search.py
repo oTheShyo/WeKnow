@@ -31,6 +31,25 @@ from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFil
 
 logger = logging.getLogger(__name__)
 
+# L1 cache of query embeddings, keyed by (embedder config, query). Query embedding is the most
+# expensive per-query step before the database lookup, and repeated queries (pagination, retries,
+# cache misses at the retrieval level) hit it over and over.
+QUERY_EMBEDDING_CACHE_MAX_SIZE = 128
+_query_embedding_cache: dict[tuple[str, str], FloatVector] = {}
+
+
+def _embed_query_cached(query: str, config: RAGLiteConfig) -> FloatVector:
+    """Embed a query string, caching the result per (embedder config, query)."""
+    cache_key = (str(config.embedder), query)
+    cached = _query_embedding_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    query_embedding = embed_strings([query], config=config)[0, :]
+    if len(_query_embedding_cache) >= QUERY_EMBEDDING_CACHE_MAX_SIZE:
+        _query_embedding_cache.pop(next(iter(_query_embedding_cache)))
+    _query_embedding_cache[cache_key] = query_embedding
+    return query_embedding
+
 
 def vector_search(
     query: str | FloatVector,
@@ -51,7 +70,7 @@ def vector_search(
         metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     # Embed the query.
     query_embedding = (
-        embed_strings([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
+        _embed_query_cached(query, config) if isinstance(query, str) else np.ravel(query)
     )
     # Apply the query adapter to the query embedding.
     if (

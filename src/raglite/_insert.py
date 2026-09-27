@@ -14,6 +14,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
+from raglite._cache import get_retrieval_cache
 from raglite._config import RAGLiteConfig
 from raglite._database import (
     Chunk,
@@ -270,3 +271,5 @@ def insert_documents(  # noqa: C901, PLR0912
                 session.execute(text("PRAGMA hnsw_compact_index('vector_search_chunk_index');"))
             session.commit()
             session.execute(text("CHECKPOINT;"))
+    # Any index mutation invalidates the retrieval result cache.
+    get_retrieval_cache().clear()
