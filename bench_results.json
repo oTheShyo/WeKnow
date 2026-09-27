@@ -1,0 +1,33 @@
+{
+  "fill": {
+    "num_chunks": 1000,
+    "num_chunk_embeddings": 10000,
+    "bulk_insert_chunks_s": NaN,
+    "bulk_insert_embeddings_s": NaN,
+    "hnsw_index_build_s": 26.59,
+    "fts_index_build_s": 0.66
+  },
+  "search": {
+    "vector_search_top20_ms": {
+      "p50": 6273.2,
+      "p95": 7398.1,
+      "mean": 5131.6
+    },
+    "keyword_search_top20_ms": {
+      "p50": 17.5,
+      "p95": 25.5
+    },
+    "rrf_fusion_ms": {
+      "p50": 0.01
+    },
+    "chunk_spans_8_results_ms": {
+      "p50": 57.6
+    },
+    "rerank_20_chunks_ms": {
+      "p50": 923.1,
+      "p95": 1042.5
+    },
+    "num_span_chunks": 8,
+    "num_reranked": 20
+  }
+}

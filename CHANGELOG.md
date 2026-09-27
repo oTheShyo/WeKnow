@@ -1,0 +1,205 @@
+## v1.1.1 (2026-05-18)
+
+### Fix
+
+- narrow Python support and remove Mistral extra (#183)
+
+## v1.1.0 (2026-05-11)
+
+### Feat
+
+- allow for multiple metadata filters on list fields (#179)
+- add Mistral Document AI for document parsing (#175)
+- support deletion for PostgreSQL and DuckDB (#170)
+- paralell tool execution (#166)
+- change sentence splitter to sat-1l-sm and fix: context management. (#164)
+- add self-query functionality (#163)
+- add document metadata expansion (#161)
+- add metadata filtering (#160)
+
+### Fix
+
+- resolve ruff 0.15.0 lint violations (#178)
+- **insert**: handle duplicate documents (#174)
+- relax user prompt in programmatic rag (#177)
+- ignore warning that prevents tests from running (#173)
+- cap max_workers in insert_documents (#167)
+
+### Perf
+
+- replace ILP solver with O(N) dynamic programming for sentence splitting (#176)
+- optimise splitting of chunklets (#171)
+
+## v1.0.0 (2025-06-11)
+
+### Feat
+
+- parallelize inserts and add benchmarking (#150)
+- optimally separate result sets in query adapter (#149)
+- add ability to control the gap in query adapter (#147)
+- improve query adapter algorithm (#146)
+- make pandas an optional dependency (#141)
+- replace SQLite with DuckDB (#137)
+- improve config and API (#138)
+- enable weighted reciprocal rank fusion (#136)
+- rank chunks by the L∞ norm of their multi-vector similarity (#132)
+- introduce chunklets to improve chunking (#123)
+- add front matter to chunk content (#126)
+- add support for reasoning tool use and upgrade to Qwen3 (#124)
+- add metadata at the document level (#122)
+- add option to use single chunk embeddings (#119)
+
+### Fix
+
+- fix parsing of font sizes for pdfs with no headings (#155)
+- run checkpoint after DuckDB inserts (#145)
+- improve token assignment in late chunking (#144)
+- upgrade rerankers and recommended Cohere model (#142)
+- adapt oversampling to chunk size (#140)
+- fix off-by-one error in parsing of Markdown headings (#133)
+- remove mdformat (#128)
+- improve contextual chunk headings (#118)
+- incorporate headings and prevent windowing chunks (#117)
+- fix chunking of single-sentence chunks (#115)
+- don't convert markdown to markdown (#116)
+
+## v0.7.0 (2025-03-17)
+
+### Feat
+
+- replace post-processing with declarative optimization (#112)
+- compute optimal sentence boundaries (#110)
+- migrate from poetry-cookiecutter to substrate (#98)
+- make llama-cpp-python an optional dependency (#97)
+- add ability to directly insert Markdown content into the database (#96)
+- make importing faster (#86)
+
+### Fix
+
+- fix CLI entrypoint regression (#111)
+- lazily raise module not found for optional deps (#109)
+- revert pandoc extra name (#106)
+- avoid conflicting chunk ids (#93)
+
+## v0.6.2 (2025-01-06)
+
+### Fix
+
+- remove unnecessary stop sequence (#84)
+
+## v0.6.1 (2025-01-06)
+
+### Fix
+
+- fix Markdown heading boundary probas (#81)
+- improve (re)insertion speed (#80)
+- **deps**: exclude litellm versions that break get_model_info (#78)
+- conditionally enable `LlamaRAMCache` (#83)
+
+## v0.6.0 (2025-01-05)
+
+### Feat
+
+- add support for Python 3.12 (#69)
+- upgrade from xx_sent_ud_sm to SaT (#74)
+- add streaming tool use to llama-cpp-python (#71)
+- improve sentence splitting (#72)
+
+## v0.5.1 (2024-12-18)
+
+### Fix
+
+- improve output for empty databases (#68)
+
+## v0.5.0 (2024-12-17)
+
+### Feat
+
+- add MCP server (#67)
+- let LLM choose whether to retrieve context (#62)
+
+### Fix
+
+- support pgvector v0.7.0+ (#63)
+
+## v0.4.1 (2024-12-05)
+
+### Fix
+
+- add and enable OpenAI strict mode (#55)
+- support embedding with LiteLLM for Ragas (#56)
+
+## v0.4.0 (2024-12-04)
+
+### Feat
+
+- improve late chunking and optimize pgvector settings (#51)
+
+## v0.3.0 (2024-12-03)
+
+### Feat
+
+- support prompt caching and apply Anthropic's long-context prompt format (#52)
+
+## v0.2.1 (2024-11-22)
+
+### Fix
+
+- improve structured output extraction and query adapter updates (#34)
+- upgrade rerankers and remove flashrank patch (#47)
+- improve unpacking of keyword search results (#46)
+- add fallbacks for model info (#44)
+
+## v0.2.0 (2024-10-21)
+
+### Feat
+
+- add Chainlit frontend (#33)
+
+## v0.1.4 (2024-10-15)
+
+### Fix
+
+- fix optimal chunking edge cases (#32)
+
+## v0.1.3 (2024-10-13)
+
+### Fix
+
+- upgrade pdftext (#30)
+- improve chunk and segment ordering (#29)
+
+## v0.1.2 (2024-10-08)
+
+### Fix
+
+- avoid pdftext v0.3.11 (#27)
+
+## v0.1.1 (2024-10-07)
+
+### Fix
+
+- patch rerankers flashrank issue (#22)
+
+## v0.1.0 (2024-10-07)
+
+### Feat
+
+- add reranking (#20)
+- add LiteLLM and late chunking (#19)
+- add PostgreSQL support (#18)
+- make query adapter minimally invasive (#16)
+- upgrade default CPU model to Phi-3.5-mini (#15)
+- add evaluation (#14)
+- infer missing font sizes (#12)
+- automatically adjust number of RAG contexts (#10)
+- improve exception feedback for extraction (#9)
+- optimize config for CPU and GPU (#7)
+- simplify document insertion (#6)
+- implement basic features (#2)
+- initial commit
+
+### Fix
+
+- lazily import optional dependencies (#11)
+- improve indexing of multiple documents (#8)

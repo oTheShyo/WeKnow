@@ -1,0 +1,24 @@
+services:
+
+  devcontainer:
+    build:
+      target: dev
+    environment:
+      - CI
+      - OPENAI_API_KEY
+    depends_on:
+      - postgres
+    volumes:
+      - ..:/workspaces
+      - command-history-volume:/home/user/.history/
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: raglite_user
+      POSTGRES_PASSWORD: raglite_password
+    tmpfs:
+      - /var/lib/postgresql/data
+
+volumes:
+  command-history-volume:
