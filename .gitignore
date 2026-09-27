@@ -81,3 +81,6 @@ uv.lock
 
 # evals
 evals/
+
+# WorkBuddy workspace data
+.workbuddy/
