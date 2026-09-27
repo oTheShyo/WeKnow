@@ -25,6 +25,14 @@
 
 ### T0：直接补齐简历缺失亮点（高价值，参考实现现成）
 
+> ✅ **2026-09-28 状态：#1–#4、#6 已全部实现并提交**（git 仓库已建立，每项能力一次 feat 提交，
+> 16 个单测全过，mypy 干净）。#5 OCR 多模态未实现（量力项）。实现方式：
+> - #1 → `_iterative_search.py`（rerank 置信度阈值触发二次召回，WeKnora 式扩池）
+> - #2 → `_incremental.py`（content-hash 增量同步 + 热更新 + 可选 prune）
+> - #3 → `_router.py`（微秒级启发式路由，无 LLM 调用）
+> - #4 → `_cache.py`（检索结果 TTL 缓存 + vector_search 内 L1 查询向量缓存 + 入库/删除失效）
+> - #6 → `_eval_generation.py`（零依赖 ROUGE-L + BLEU，CJK 感知分词）
+
 | # | 优化项 | WeKnora 参考机制 | RAGLite 上的实现路径 | 工作量 |
 |---|---|---|---|---|
 | 1 | **低置信度二次检索** | FAQ 迭代检索（每轮起始深度翻倍）+ agent 多步 refine | 在 `search_and_rerank_chunk_spans` 外包一层：rerank 最高分 < 阈值（如 0.3）时，扩大 `num_results`×2 重新检索+重排，仍不达则走 agentic 迭代。置信度直接用 rerank score | **1–2 天** ⭐推荐首选 |
