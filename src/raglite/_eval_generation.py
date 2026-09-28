@@ -1,8 +1,10 @@
 """Generation-side evaluation: ROUGE-L and BLEU over question-answer pairs.
 
-These metrics complement the TREC retrieval-side evaluation (MRR, Hit@K, nDCG in `_bench.py`) to
-form a joint retrieval and generation evaluation. The implementations are dependency-free
-(token-level, CJK-aware tokenization), so they run anywhere the rest of RAGLite runs.
+These metrics cover the generation side of the pipeline. The retrieval side is measured separately
+by the ablation in `bench_graph_ab.py` (recall@k and MRR over a hand-built question set), while
+`_bench.py` offers an ir_measures-compatible TREC run interface for standard datasets. The
+implementations here are dependency-free (token-level, CJK-aware tokenization), so they run
+anywhere the rest of RAGLite runs.
 """
 
 import math

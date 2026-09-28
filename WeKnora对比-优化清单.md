@@ -14,7 +14,7 @@
 | 文档解析 | 13 格式，三引擎互补（anydoc Rust + DocReader OCR + PaddleOCR-VL） | ~~PDF/MD（pdftext+Pandoc），纯文本~~ → **已对齐：引擎注册表 + builtin 28 类格式 + 4 类可选引擎 + 三级降级回退**（2026-09-29，见 `文档解析与GraphRAG-对齐WeKnora.md`） | 已拉平（RAGLite 且零新增依赖） |
 | 切分 | 父子分块 + 自适应三级切分 | 三层最优化切分（SaT/DP/BIP，有理论依据） | **RAGLite**（更讲究） |
 | 检索 | BM25+Dense+GraphRAG，RRF 归一化修复、意图识别、FAQ 迭代 | BM25+Dense+RRF+FlashRank+agentic 迭代 + **图增强第三路**（加权/投影/查询期扩展已对齐 WeKnora，存储走 DuckDB 不依赖 Neo4j） | 各有侧重 |
-| 评估 | Recall + BLEU/ROUGE + Langfuse 全链路追踪 | TREC MRR/Hit/nDCG（检索端更强） | 检索 RAGLite，生成+可观测 WeKnora |
+| 评估 | Recall + BLEU/ROUGE + Langfuse 全链路追踪 | 检索端：自建双类问题集 + 三臂 A/B（Recall@k / MRR@5，**规模小、离线嵌入替身**）；生成端：零依赖 ROUGE-L/BLEU（**未有真实分数**）；`_bench.py` 提供 ir_measures 兼容的 TREC run 接口但**未在标准数据集跑过** | 各有侧重：WeKnora 有全链路追踪与真实评测，RAGLite 侧量化证据不足 |
 | 生态 | 8 种向量库、27 家 LLM、10 种 IM 渠道 | PG + DuckDB，litellm | WeKnora（服务化所需） |
 
 **一句话**：WeKnora 是"企业知识库产品"，RAGLite 是"嵌入式检索内核"。拿 RAGLite 缺服务化能力去批评它，不如拿 WeKnora 的**模块设计**来补 RAGLite 的**功能空白**。

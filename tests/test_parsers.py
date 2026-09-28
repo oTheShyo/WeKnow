@@ -276,7 +276,8 @@ def test_parser_failure_falls_back_to_builtin(tmp_path: Any) -> None:
         FILE_TYPES: frozenset[str] = frozenset({"md"})
 
         def parse(self, doc_path: Path, *, config: RAGLiteConfig | None = None) -> Any:
-            raise ParserFallbackError("pandoc could not read this file")
+            error_message = "the external engine could not read this file"
+            raise ParserFallbackError(error_message)
 
     doc_path = tmp_path / "note.md"
     doc_path.write_text("# Title\n\nBody text.", encoding="utf-8")
