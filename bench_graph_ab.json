@@ -1,0 +1,3103 @@
+{
+  "arms": [
+    {
+      "arm": "baseline_2path",
+      "aggregate": {
+        "single": {
+          "n": 8,
+          "recall@1": 0.25,
+          "recall@3": 0.625,
+          "recall@5": 1.0,
+          "mrr@5": 0.5042,
+          "graph_only_hit_rate": 1.0
+        },
+        "relational": {
+          "n": 8,
+          "recall@1": 0.125,
+          "recall@3": 0.375,
+          "recall@5": 0.625,
+          "mrr@5": 0.3125,
+          "graph_only_hit_rate": 0.5
+        }
+      },
+      "per_question": [
+        {
+          "id": "S1",
+          "cls": "single",
+          "question": "HNSW 用什么换取查询加速？",
+          "gold": [
+            "d09"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d10",
+            "d21",
+            "d22",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d09": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d09"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S2",
+          "cls": "single",
+          "question": "BM25 的打分依据是什么？",
+          "gold": [
+            "d10"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d10",
+            "d13",
+            "d14",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d10": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d10"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0155
+        },
+        {
+          "id": "S3",
+          "cls": "single",
+          "question": "RRF 为什么不需要分数归一化？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d17",
+            "d18",
+            "d13",
+            "d11"
+          ],
+          "gold_ranks": {
+            "d11": 5
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.2,
+          "graph_only_docs": [
+            "d11"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S4",
+          "cls": "single",
+          "question": "FlashRank 的重排方式是什么？",
+          "gold": [
+            "d12"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d17",
+            "d07",
+            "d12",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d12": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d12"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S5",
+          "cls": "single",
+          "question": "DuckDB 提供哪些检索扩展？",
+          "gold": [
+            "d13"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d13",
+            "d14",
+            "d24",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d13": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d13"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S6",
+          "cls": "single",
+          "question": "chunklet 的嵌入在哪一步计算？",
+          "gold": [
+            "d14"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d09",
+            "d14",
+            "d15",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d14": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S7",
+          "cls": "single",
+          "question": "雾化器把溶液变成什么？",
+          "gold": [
+            "d06"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d07",
+            "d13",
+            "d20",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d06": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d05",
+            "d06"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0125
+        },
+        {
+          "id": "S8",
+          "cls": "single",
+          "question": "管式炉的温度影响颗粒的什么性质？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d06",
+            "d07",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d07"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0125
+        },
+        {
+          "id": "R1",
+          "cls": "relational",
+          "question": "SMPS 能覆盖多宽的粒径范围，这由什么决定？",
+          "gold": [
+            "d02"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d01",
+            "d06",
+            "d17",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d02": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0166
+        },
+        {
+          "id": "R2",
+          "cls": "relational",
+          "question": "SMPS 在小粒径端的响应为什么变差？",
+          "gold": [
+            "d03"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d13",
+            "d20",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d03": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0151
+        },
+        {
+          "id": "R3",
+          "cls": "relational",
+          "question": "SMPS 里那个传感器在小尺寸上为什么要校准？",
+          "gold": [
+            "d18"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d18",
+            "d19",
+            "d13",
+            "d12"
+          ],
+          "gold_ranks": {
+            "d18": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0125
+        },
+        {
+          "id": "R4",
+          "cls": "relational",
+          "question": "颗粒进入 CPC 之前那道加热环节会影响什么？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d18",
+            "d07",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d01",
+            "d03",
+            "d18"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0161
+        },
+        {
+          "id": "R5",
+          "cls": "relational",
+          "question": "FIMS 测量的那个物理量与带电数是什么关系？",
+          "gold": [
+            "d20"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d17",
+            "d13",
+            "d24"
+          ],
+          "gold_ranks": {
+            "d20": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d04",
+            "d20"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "R6",
+          "cls": "relational",
+          "question": "SMPS 反演粒径时依赖的那个核心输入是什么？",
+          "gold": [
+            "d17"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d13",
+            "d14",
+            "d15"
+          ],
+          "gold_ranks": {
+            "d17": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0158
+        },
+        {
+          "id": "R7",
+          "cls": "relational",
+          "question": "BIP 切分与哪种嵌入方式配合才能保留上下文？",
+          "gold": [
+            "d15"
+          ],
+          "ranked_docs": [
+            "d10",
+            "d14",
+            "d24",
+            "d15",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d15": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d16"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0165
+        },
+        {
+          "id": "R8",
+          "cls": "relational",
+          "question": "二次检索扩大候选池之后，多路结果是怎么合并的？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d13",
+            "d12",
+            "d14",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d11": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d23"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0125
+        }
+      ],
+      "extractor": "glossary_oracle",
+      "graph_stats": {
+        "entities": 26,
+        "relations": 11,
+        "entity_chunk_links": 35,
+        "chunks_indexed": 24
+      },
+      "build": {
+        "chunks_extracted": 24,
+        "chunks_skipped": 0,
+        "chunks_failed": 0,
+        "entities": 26,
+        "relations": 11,
+        "entity_chunk_links": 35,
+        "chunks_indexed": 24
+      }
+    },
+    {
+      "arm": "graph_w0.1",
+      "aggregate": {
+        "single": {
+          "n": 8,
+          "recall@1": 0.25,
+          "recall@3": 0.625,
+          "recall@5": 1.0,
+          "mrr@5": 0.5042,
+          "graph_only_hit_rate": 1.0
+        },
+        "relational": {
+          "n": 8,
+          "recall@1": 0.125,
+          "recall@3": 0.25,
+          "recall@5": 0.75,
+          "mrr@5": 0.3125,
+          "graph_only_hit_rate": 0.5
+        }
+      },
+      "per_question": [
+        {
+          "id": "S1",
+          "cls": "single",
+          "question": "HNSW 用什么换取查询加速？",
+          "gold": [
+            "d09"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d10",
+            "d21",
+            "d22",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d09": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d09"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S2",
+          "cls": "single",
+          "question": "BM25 的打分依据是什么？",
+          "gold": [
+            "d10"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d10",
+            "d13",
+            "d14",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d10": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d10"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0172
+        },
+        {
+          "id": "S3",
+          "cls": "single",
+          "question": "RRF 为什么不需要分数归一化？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d17",
+            "d18",
+            "d13",
+            "d11"
+          ],
+          "gold_ranks": {
+            "d11": 5
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.2,
+          "graph_only_docs": [
+            "d11"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S4",
+          "cls": "single",
+          "question": "FlashRank 的重排方式是什么？",
+          "gold": [
+            "d12"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d17",
+            "d07",
+            "d12",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d12": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d12"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S5",
+          "cls": "single",
+          "question": "DuckDB 提供哪些检索扩展？",
+          "gold": [
+            "d13"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d13",
+            "d14",
+            "d24",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d13": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d13"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S6",
+          "cls": "single",
+          "question": "chunklet 的嵌入在哪一步计算？",
+          "gold": [
+            "d14"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d09",
+            "d14",
+            "d15",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d14": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S7",
+          "cls": "single",
+          "question": "雾化器把溶液变成什么？",
+          "gold": [
+            "d06"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d07",
+            "d13",
+            "d20",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d06": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d05",
+            "d06"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0141
+        },
+        {
+          "id": "S8",
+          "cls": "single",
+          "question": "管式炉的温度影响颗粒的什么性质？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d06",
+            "d07",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d07"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0142
+        },
+        {
+          "id": "R1",
+          "cls": "relational",
+          "question": "SMPS 能覆盖多宽的粒径范围，这由什么决定？",
+          "gold": [
+            "d02"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d01",
+            "d17",
+            "d18",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d02": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "R2",
+          "cls": "relational",
+          "question": "SMPS 在小粒径端的响应为什么变差？",
+          "gold": [
+            "d03"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d01",
+            "d17",
+            "d18",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d03": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0168
+        },
+        {
+          "id": "R3",
+          "cls": "relational",
+          "question": "SMPS 里那个传感器在小尺寸上为什么要校准？",
+          "gold": [
+            "d18"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d17",
+            "d18",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d18": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.014
+        },
+        {
+          "id": "R4",
+          "cls": "relational",
+          "question": "颗粒进入 CPC 之前那道加热环节会影响什么？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d18",
+            "d07",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d01",
+            "d03",
+            "d18"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0177
+        },
+        {
+          "id": "R5",
+          "cls": "relational",
+          "question": "FIMS 测量的那个物理量与带电数是什么关系？",
+          "gold": [
+            "d20"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d13",
+            "d20",
+            "d24"
+          ],
+          "gold_ranks": {
+            "d20": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d04",
+            "d20"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "R6",
+          "cls": "relational",
+          "question": "SMPS 反演粒径时依赖的那个核心输入是什么？",
+          "gold": [
+            "d17"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d18",
+            "d14",
+            "d15"
+          ],
+          "gold_ranks": {
+            "d17": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0175
+        },
+        {
+          "id": "R7",
+          "cls": "relational",
+          "question": "BIP 切分与哪种嵌入方式配合才能保留上下文？",
+          "gold": [
+            "d15"
+          ],
+          "ranked_docs": [
+            "d10",
+            "d14",
+            "d24",
+            "d15",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d15": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d16"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0181
+        },
+        {
+          "id": "R8",
+          "cls": "relational",
+          "question": "二次检索扩大候选池之后，多路结果是怎么合并的？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d13",
+            "d12",
+            "d14",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d11": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d23"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0142
+        }
+      ],
+      "extractor": "glossary_oracle",
+      "graph_stats": {
+        "entities": 26,
+        "relations": 11,
+        "entity_chunk_links": 35,
+        "chunks_indexed": 24
+      },
+      "build": {
+        "chunks_extracted": 24,
+        "chunks_skipped": 0,
+        "chunks_failed": 0,
+        "entities": 26,
+        "relations": 11,
+        "entity_chunk_links": 35,
+        "chunks_indexed": 24
+      }
+    },
+    {
+      "arm": "graph_w0.3",
+      "aggregate": {
+        "single": {
+          "n": 8,
+          "recall@1": 0.25,
+          "recall@3": 0.625,
+          "recall@5": 1.0,
+          "mrr@5": 0.5042,
+          "graph_only_hit_rate": 1.0
+        },
+        "relational": {
+          "n": 8,
+          "recall@1": 0.125,
+          "recall@3": 0.25,
+          "recall@5": 0.75,
+          "mrr@5": 0.3125,
+          "graph_only_hit_rate": 0.5
+        }
+      },
+      "per_question": [
+        {
+          "id": "S1",
+          "cls": "single",
+          "question": "HNSW 用什么换取查询加速？",
+          "gold": [
+            "d09"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d10",
+            "d21",
+            "d22",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d09": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d09"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S2",
+          "cls": "single",
+          "question": "BM25 的打分依据是什么？",
+          "gold": [
+            "d10"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d10",
+            "d13",
+            "d14",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d10": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d10"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0205
+        },
+        {
+          "id": "S3",
+          "cls": "single",
+          "question": "RRF 为什么不需要分数归一化？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d17",
+            "d18",
+            "d13",
+            "d11"
+          ],
+          "gold_ranks": {
+            "d11": 5
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.2,
+          "graph_only_docs": [
+            "d11"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S4",
+          "cls": "single",
+          "question": "FlashRank 的重排方式是什么？",
+          "gold": [
+            "d12"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d17",
+            "d07",
+            "d12",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d12": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d12"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S5",
+          "cls": "single",
+          "question": "DuckDB 提供哪些检索扩展？",
+          "gold": [
+            "d13"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d13",
+            "d14",
+            "d24",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d13": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d13"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S6",
+          "cls": "single",
+          "question": "chunklet 的嵌入在哪一步计算？",
+          "gold": [
+            "d14"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d09",
+            "d14",
+            "d15",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d14": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S7",
+          "cls": "single",
+          "question": "雾化器把溶液变成什么？",
+          "gold": [
+            "d06"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d07",
+            "d13",
+            "d20",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d06": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d05",
+            "d06"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0174
+        },
+        {
+          "id": "S8",
+          "cls": "single",
+          "question": "管式炉的温度影响颗粒的什么性质？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d06",
+            "d07",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d07"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0175
+        },
+        {
+          "id": "R1",
+          "cls": "relational",
+          "question": "SMPS 能覆盖多宽的粒径范围，这由什么决定？",
+          "gold": [
+            "d02"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d01",
+            "d17",
+            "d18",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d02": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0216
+        },
+        {
+          "id": "R2",
+          "cls": "relational",
+          "question": "SMPS 在小粒径端的响应为什么变差？",
+          "gold": [
+            "d03"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d01",
+            "d17",
+            "d18",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d03": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0201
+        },
+        {
+          "id": "R3",
+          "cls": "relational",
+          "question": "SMPS 里那个传感器在小尺寸上为什么要校准？",
+          "gold": [
+            "d18"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d17",
+            "d18",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d18": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0171
+        },
+        {
+          "id": "R4",
+          "cls": "relational",
+          "question": "颗粒进入 CPC 之前那道加热环节会影响什么？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d18",
+            "d07",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d01",
+            "d03",
+            "d18"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.021
+        },
+        {
+          "id": "R5",
+          "cls": "relational",
+          "question": "FIMS 测量的那个物理量与带电数是什么关系？",
+          "gold": [
+            "d20"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d13",
+            "d20",
+            "d24"
+          ],
+          "gold_ranks": {
+            "d20": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d04",
+            "d20"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "R6",
+          "cls": "relational",
+          "question": "SMPS 反演粒径时依赖的那个核心输入是什么？",
+          "gold": [
+            "d17"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d18",
+            "d14",
+            "d15"
+          ],
+          "gold_ranks": {
+            "d17": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d02",
+            "d04",
+            "d01",
+            "d17",
+            "d18"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0208
+        },
+        {
+          "id": "R7",
+          "cls": "relational",
+          "question": "BIP 切分与哪种嵌入方式配合才能保留上下文？",
+          "gold": [
+            "d15"
+          ],
+          "ranked_docs": [
+            "d10",
+            "d14",
+            "d24",
+            "d15",
+            "d16"
+          ],
+          "gold_ranks": {
+            "d15": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d16"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0215
+        },
+        {
+          "id": "R8",
+          "cls": "relational",
+          "question": "二次检索扩大候选池之后，多路结果是怎么合并的？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d13",
+            "d12",
+            "d14",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d11": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d23"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0175
+        }
+      ],
+      "extractor": "glossary_oracle",
+      "graph_stats": {
+        "entities": 26,
+        "relations": 11,
+        "entity_chunk_links": 35,
+        "chunks_indexed": 24
+      },
+      "build": {
+        "chunks_extracted": 24,
+        "chunks_skipped": 0,
+        "chunks_failed": 0,
+        "entities": 26,
+        "relations": 11,
+        "entity_chunk_links": 35,
+        "chunks_indexed": 24
+      }
+    },
+    {
+      "arm": "baseline_2path",
+      "aggregate": {
+        "single": {
+          "n": 8,
+          "recall@1": 0.125,
+          "recall@3": 0.625,
+          "recall@5": 1.0,
+          "mrr@5": 0.4208,
+          "graph_only_hit_rate": 1.0
+        },
+        "relational": {
+          "n": 8,
+          "recall@1": 0.0,
+          "recall@3": 0.625,
+          "recall@5": 0.625,
+          "mrr@5": 0.2917,
+          "graph_only_hit_rate": 0.125
+        }
+      },
+      "per_question": [
+        {
+          "id": "S1",
+          "cls": "single",
+          "question": "HNSW 用什么换取查询加速？",
+          "gold": [
+            "d09"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d10",
+            "d16",
+            "d22",
+            "d21"
+          ],
+          "gold_ranks": {
+            "d09": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d09",
+            "d22"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S2",
+          "cls": "single",
+          "question": "BM25 的打分依据是什么？",
+          "gold": [
+            "d10"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d13",
+            "d10",
+            "d16",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d10": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d10"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0155
+        },
+        {
+          "id": "S3",
+          "cls": "single",
+          "question": "RRF 为什么不需要分数归一化？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d17",
+            "d18",
+            "d11",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d11": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d11"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S4",
+          "cls": "single",
+          "question": "FlashRank 的重排方式是什么？",
+          "gold": [
+            "d12"
+          ],
+          "ranked_docs": [
+            "d07",
+            "d08",
+            "d17",
+            "d12",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d12": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d12"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S5",
+          "cls": "single",
+          "question": "DuckDB 提供哪些检索扩展？",
+          "gold": [
+            "d13"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d13",
+            "d23",
+            "d24",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d13": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d13"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S6",
+          "cls": "single",
+          "question": "chunklet 的嵌入在哪一步计算？",
+          "gold": [
+            "d14"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d09",
+            "d15",
+            "d16",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d14": 5
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.2,
+          "graph_only_docs": [
+            "d15",
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0167
+        },
+        {
+          "id": "S7",
+          "cls": "single",
+          "question": "雾化器把溶液变成什么？",
+          "gold": [
+            "d06"
+          ],
+          "ranked_docs": [
+            "d07",
+            "d06",
+            "d20",
+            "d13",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d06": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d06"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0125
+        },
+        {
+          "id": "S8",
+          "cls": "single",
+          "question": "管式炉的温度影响颗粒的什么性质？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d07",
+            "d06",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d07",
+            "d20"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0125
+        },
+        {
+          "id": "R1",
+          "cls": "relational",
+          "question": "SMPS 能覆盖多宽的粒径范围，这由什么决定？",
+          "gold": [
+            "d02"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d02",
+            "d17",
+            "d06",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d02": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0166
+        },
+        {
+          "id": "R2",
+          "cls": "relational",
+          "question": "SMPS 在小粒径端的响应为什么变差？",
+          "gold": [
+            "d03"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d20",
+            "d13",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d03": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0151
+        },
+        {
+          "id": "R3",
+          "cls": "relational",
+          "question": "SMPS 里那个传感器在小尺寸上为什么要校准？",
+          "gold": [
+            "d18"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d18",
+            "d19",
+            "d12",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d18": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0125
+        },
+        {
+          "id": "R4",
+          "cls": "relational",
+          "question": "颗粒进入 CPC 之前那道加热环节会影响什么？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d07",
+            "d18",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d03",
+            "d20"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0161
+        },
+        {
+          "id": "R5",
+          "cls": "relational",
+          "question": "FIMS 测量的那个物理量与带电数是什么关系？",
+          "gold": [
+            "d20"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d17",
+            "d13",
+            "d24"
+          ],
+          "gold_ranks": {
+            "d20": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d04"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0167
+        },
+        {
+          "id": "R6",
+          "cls": "relational",
+          "question": "SMPS 反演粒径时依赖的那个核心输入是什么？",
+          "gold": [
+            "d17"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d13",
+            "d15",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d17": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0158
+        },
+        {
+          "id": "R7",
+          "cls": "relational",
+          "question": "BIP 切分与哪种嵌入方式配合才能保留上下文？",
+          "gold": [
+            "d15"
+          ],
+          "ranked_docs": [
+            "d10",
+            "d15",
+            "d16",
+            "d24",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d15": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d15",
+            "d16",
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0165
+        },
+        {
+          "id": "R8",
+          "cls": "relational",
+          "question": "二次检索扩大候选池之后，多路结果是怎么合并的？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d12",
+            "d13",
+            "d23",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d11": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d13",
+            "d23"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0125
+        }
+      ],
+      "extractor": "cooccurrence_offline",
+      "graph_stats": {
+        "entities": 44,
+        "relations": 35,
+        "entity_chunk_links": 45,
+        "chunks_indexed": 24
+      },
+      "build": {
+        "chunks_extracted": 24,
+        "chunks_skipped": 0,
+        "chunks_failed": 0,
+        "entities": 44,
+        "relations": 35,
+        "entity_chunk_links": 45,
+        "chunks_indexed": 24
+      }
+    },
+    {
+      "arm": "graph_w0.1",
+      "aggregate": {
+        "single": {
+          "n": 8,
+          "recall@1": 0.125,
+          "recall@3": 0.625,
+          "recall@5": 1.0,
+          "mrr@5": 0.4208,
+          "graph_only_hit_rate": 1.0
+        },
+        "relational": {
+          "n": 8,
+          "recall@1": 0.0,
+          "recall@3": 0.625,
+          "recall@5": 0.625,
+          "mrr@5": 0.2917,
+          "graph_only_hit_rate": 0.125
+        }
+      },
+      "per_question": [
+        {
+          "id": "S1",
+          "cls": "single",
+          "question": "HNSW 用什么换取查询加速？",
+          "gold": [
+            "d09"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d10",
+            "d16",
+            "d22",
+            "d21"
+          ],
+          "gold_ranks": {
+            "d09": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d09",
+            "d22"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S2",
+          "cls": "single",
+          "question": "BM25 的打分依据是什么？",
+          "gold": [
+            "d10"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d13",
+            "d10",
+            "d16",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d10": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d10"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0172
+        },
+        {
+          "id": "S3",
+          "cls": "single",
+          "question": "RRF 为什么不需要分数归一化？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d17",
+            "d18",
+            "d11",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d11": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d11"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S4",
+          "cls": "single",
+          "question": "FlashRank 的重排方式是什么？",
+          "gold": [
+            "d12"
+          ],
+          "ranked_docs": [
+            "d07",
+            "d08",
+            "d17",
+            "d12",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d12": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d12"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S5",
+          "cls": "single",
+          "question": "DuckDB 提供哪些检索扩展？",
+          "gold": [
+            "d13"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d13",
+            "d23",
+            "d24",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d13": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d13"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S6",
+          "cls": "single",
+          "question": "chunklet 的嵌入在哪一步计算？",
+          "gold": [
+            "d14"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d09",
+            "d15",
+            "d16",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d14": 5
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.2,
+          "graph_only_docs": [
+            "d15",
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0183
+        },
+        {
+          "id": "S7",
+          "cls": "single",
+          "question": "雾化器把溶液变成什么？",
+          "gold": [
+            "d06"
+          ],
+          "ranked_docs": [
+            "d07",
+            "d06",
+            "d20",
+            "d13",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d06": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d06"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0142
+        },
+        {
+          "id": "S8",
+          "cls": "single",
+          "question": "管式炉的温度影响颗粒的什么性质？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d07",
+            "d06",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d07",
+            "d20"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0141
+        },
+        {
+          "id": "R1",
+          "cls": "relational",
+          "question": "SMPS 能覆盖多宽的粒径范围，这由什么决定？",
+          "gold": [
+            "d02"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d02",
+            "d17",
+            "d06",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d02": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0183
+        },
+        {
+          "id": "R2",
+          "cls": "relational",
+          "question": "SMPS 在小粒径端的响应为什么变差？",
+          "gold": [
+            "d03"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d20",
+            "d13",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d03": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0168
+        },
+        {
+          "id": "R3",
+          "cls": "relational",
+          "question": "SMPS 里那个传感器在小尺寸上为什么要校准？",
+          "gold": [
+            "d18"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d18",
+            "d19",
+            "d12",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d18": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0125
+        },
+        {
+          "id": "R4",
+          "cls": "relational",
+          "question": "颗粒进入 CPC 之前那道加热环节会影响什么？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d07",
+            "d18",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d03",
+            "d20"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0175
+        },
+        {
+          "id": "R5",
+          "cls": "relational",
+          "question": "FIMS 测量的那个物理量与带电数是什么关系？",
+          "gold": [
+            "d20"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d17",
+            "d13",
+            "d24"
+          ],
+          "gold_ranks": {
+            "d20": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d04"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0183
+        },
+        {
+          "id": "R6",
+          "cls": "relational",
+          "question": "SMPS 反演粒径时依赖的那个核心输入是什么？",
+          "gold": [
+            "d17"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d13",
+            "d15",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d17": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0175
+        },
+        {
+          "id": "R7",
+          "cls": "relational",
+          "question": "BIP 切分与哪种嵌入方式配合才能保留上下文？",
+          "gold": [
+            "d15"
+          ],
+          "ranked_docs": [
+            "d10",
+            "d15",
+            "d16",
+            "d24",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d15": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d15",
+            "d16",
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0181
+        },
+        {
+          "id": "R8",
+          "cls": "relational",
+          "question": "二次检索扩大候选池之后，多路结果是怎么合并的？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d12",
+            "d13",
+            "d23",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d11": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d13",
+            "d23"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0141
+        }
+      ],
+      "extractor": "cooccurrence_offline",
+      "graph_stats": {
+        "entities": 44,
+        "relations": 35,
+        "entity_chunk_links": 45,
+        "chunks_indexed": 24
+      },
+      "build": {
+        "chunks_extracted": 24,
+        "chunks_skipped": 0,
+        "chunks_failed": 0,
+        "entities": 44,
+        "relations": 35,
+        "entity_chunk_links": 45,
+        "chunks_indexed": 24
+      }
+    },
+    {
+      "arm": "graph_w0.3",
+      "aggregate": {
+        "single": {
+          "n": 8,
+          "recall@1": 0.125,
+          "recall@3": 0.625,
+          "recall@5": 1.0,
+          "mrr@5": 0.4208,
+          "graph_only_hit_rate": 1.0
+        },
+        "relational": {
+          "n": 8,
+          "recall@1": 0.0,
+          "recall@3": 0.625,
+          "recall@5": 0.625,
+          "mrr@5": 0.2917,
+          "graph_only_hit_rate": 0.125
+        }
+      },
+      "per_question": [
+        {
+          "id": "S1",
+          "cls": "single",
+          "question": "HNSW 用什么换取查询加速？",
+          "gold": [
+            "d09"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d10",
+            "d16",
+            "d22",
+            "d21"
+          ],
+          "gold_ranks": {
+            "d09": 1
+          },
+          "recall": {
+            "1": 1.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 1.0,
+          "graph_only_docs": [
+            "d09",
+            "d22"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0216
+        },
+        {
+          "id": "S2",
+          "cls": "single",
+          "question": "BM25 的打分依据是什么？",
+          "gold": [
+            "d10"
+          ],
+          "ranked_docs": [
+            "d06",
+            "d13",
+            "d10",
+            "d16",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d10": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d10"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0205
+        },
+        {
+          "id": "S3",
+          "cls": "single",
+          "question": "RRF 为什么不需要分数归一化？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d17",
+            "d18",
+            "d11",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d11": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d11"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S4",
+          "cls": "single",
+          "question": "FlashRank 的重排方式是什么？",
+          "gold": [
+            "d12"
+          ],
+          "ranked_docs": [
+            "d07",
+            "d08",
+            "d17",
+            "d12",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d12": 4
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.25,
+          "graph_only_docs": [
+            "d12"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S5",
+          "cls": "single",
+          "question": "DuckDB 提供哪些检索扩展？",
+          "gold": [
+            "d13"
+          ],
+          "ranked_docs": [
+            "d09",
+            "d13",
+            "d23",
+            "d24",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d13": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d13"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S6",
+          "cls": "single",
+          "question": "chunklet 的嵌入在哪一步计算？",
+          "gold": [
+            "d14"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d09",
+            "d15",
+            "d16",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d14": 5
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 1.0
+          },
+          "rr": 0.2,
+          "graph_only_docs": [
+            "d15",
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0217
+        },
+        {
+          "id": "S7",
+          "cls": "single",
+          "question": "雾化器把溶液变成什么？",
+          "gold": [
+            "d06"
+          ],
+          "ranked_docs": [
+            "d07",
+            "d06",
+            "d20",
+            "d13",
+            "d23"
+          ],
+          "gold_ranks": {
+            "d06": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d06"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0175
+        },
+        {
+          "id": "S8",
+          "cls": "single",
+          "question": "管式炉的温度影响颗粒的什么性质？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d07",
+            "d06",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d07",
+            "d20"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0174
+        },
+        {
+          "id": "R1",
+          "cls": "relational",
+          "question": "SMPS 能覆盖多宽的粒径范围，这由什么决定？",
+          "gold": [
+            "d02"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d02",
+            "d17",
+            "d06",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d02": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0216
+        },
+        {
+          "id": "R2",
+          "cls": "relational",
+          "question": "SMPS 在小粒径端的响应为什么变差？",
+          "gold": [
+            "d03"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d20",
+            "d13",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d03": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0201
+        },
+        {
+          "id": "R3",
+          "cls": "relational",
+          "question": "SMPS 里那个传感器在小尺寸上为什么要校准？",
+          "gold": [
+            "d18"
+          ],
+          "ranked_docs": [
+            "d03",
+            "d18",
+            "d19",
+            "d12",
+            "d13"
+          ],
+          "gold_ranks": {
+            "d18": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0125
+        },
+        {
+          "id": "R4",
+          "cls": "relational",
+          "question": "颗粒进入 CPC 之前那道加热环节会影响什么？",
+          "gold": [
+            "d07"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d03",
+            "d07",
+            "d18",
+            "d20"
+          ],
+          "gold_ranks": {
+            "d07": 3
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.3333333333333333,
+          "graph_only_docs": [
+            "d03",
+            "d20"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0207
+        },
+        {
+          "id": "R5",
+          "cls": "relational",
+          "question": "FIMS 测量的那个物理量与带电数是什么关系？",
+          "gold": [
+            "d20"
+          ],
+          "ranked_docs": [
+            "d02",
+            "d04",
+            "d17",
+            "d13",
+            "d24"
+          ],
+          "gold_ranks": {
+            "d20": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d04"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0217
+        },
+        {
+          "id": "R6",
+          "cls": "relational",
+          "question": "SMPS 反演粒径时依赖的那个核心输入是什么？",
+          "gold": [
+            "d17"
+          ],
+          "ranked_docs": [
+            "d01",
+            "d17",
+            "d13",
+            "d15",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d17": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d01"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0208
+        },
+        {
+          "id": "R7",
+          "cls": "relational",
+          "question": "BIP 切分与哪种嵌入方式配合才能保留上下文？",
+          "gold": [
+            "d15"
+          ],
+          "ranked_docs": [
+            "d10",
+            "d15",
+            "d16",
+            "d24",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d15": 2
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 1.0,
+            "5": 1.0
+          },
+          "rr": 0.5,
+          "graph_only_docs": [
+            "d15",
+            "d16",
+            "d14"
+          ],
+          "graph_only_hit": true,
+          "top_score": 0.0213
+        },
+        {
+          "id": "R8",
+          "cls": "relational",
+          "question": "二次检索扩大候选池之后，多路结果是怎么合并的？",
+          "gold": [
+            "d11"
+          ],
+          "ranked_docs": [
+            "d08",
+            "d12",
+            "d13",
+            "d23",
+            "d14"
+          ],
+          "gold_ranks": {
+            "d11": null
+          },
+          "recall": {
+            "1": 0.0,
+            "3": 0.0,
+            "5": 0.0
+          },
+          "rr": 0.0,
+          "graph_only_docs": [
+            "d13",
+            "d23"
+          ],
+          "graph_only_hit": false,
+          "top_score": 0.0174
+        }
+      ],
+      "extractor": "cooccurrence_offline",
+      "graph_stats": {
+        "entities": 44,
+        "relations": 35,
+        "entity_chunk_links": 45,
+        "chunks_indexed": 24
+      },
+      "build": {
+        "chunks_extracted": 24,
+        "chunks_skipped": 0,
+        "chunks_failed": 0,
+        "entities": 44,
+        "relations": 35,
+        "entity_chunk_links": 45,
+        "chunks_indexed": 24
+      }
+    }
+  ]
+}
