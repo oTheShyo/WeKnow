@@ -11,6 +11,13 @@ back to a sequential scan. This script builds the same 10k x 1536 table on a *co
 benchmark database, recreates the HNSW index under each metric, and reports for each operator
 whether the index is used and what the latency is.
 
+⚠️ CAVEAT (2026-09-28): this script probes the *reduced* query shape
+`SELECT chunk_id, <op>(embedding, ?) AS dist FROM chunk_embedding ORDER BY dist LIMIT 200`,
+which DOES get `HNSW_INDEX_SCAN`. RAGLite's real `vector_search` additionally projects
+`1.0 - <op>(...) AS sim`, and that second distance expression makes DuckDB drop the index scan
+and fall back to `SEQ_SCAN`. So "this script says the index is used" does NOT mean the real
+retrieval path uses it — see 复现指南-实测数据.md §3.1 for the side-by-side EXPLAIN.
+
 Run:  python bench_hnsw_matrix.py
 """
 

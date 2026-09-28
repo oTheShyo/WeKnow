@@ -26,7 +26,9 @@
 ### T0：直接补齐简历缺失亮点（高价值，参考实现现成）
 
 > ✅ **2026-09-28 状态：#1–#6 已全部实现并提交**（git 仓库已建立，每项能力一次 feat 提交，
-> 新增单测 16 + 22 = 38 个全过，mypy 干净）。实现方式：
+> 新增单测 16 + 22 = 38 个全过，mypy 干净）。**#6b（图增强检索）亦已实现并完成三臂 A/B 评测**
+> （+33 单测，自研扩展单测合计 71 个全过），结论为「单跳零退化、关系类净打平」→ 保持默认关闭。
+> 实现方式：
 > - #1 → `_iterative_search.py`（rerank 置信度阈值触发二次召回，WeKnora 式扩池）
 > - #2 → `_incremental.py`（content-hash 增量同步 + 热更新 + 可选 prune）
 > - #3 → `_router.py`（微秒级启发式路由，无 LLM 调用）
@@ -44,12 +46,13 @@
 | 4 | **分层缓存** | provider prompt-cache 标记 + 上下文压缩 | 三层：① embedding 结果缓存（query hash→向量）；② 检索结果缓存（query hash→chunk_ids，TTL 失效）；③ 上下文压缩（超窗时先压缩历史再拼 context）。个人场景命中率会很高（重复问类似问题） | 2–3 天 |
 | 5 | **OCR/VLM 多模态** | PaddleOCR-VL 解析器 + 图片 auto-describe caption 独立入索引 | PDF 解析时检测图片区域 → PaddleOCR 提文字 / VLM 生成 caption → 作为独立 chunk 入索引（绑 `image_id` 元数据）。先做 OCR 路径（本地、免费），VLM caption 可选 | ~~3–5 天~~ **已完成** ✅ |
 | 6 | **生成端评估** | Recall + BLEU/ROUGE 端到端评估 | 检索端已有 TREC（MRR/Hit），补生成端：`rouge-score` 库算 ROUGE-L、`nltk` BLEU，用自建 QA 集（gen_bench.py 已内置 6 问可扩到 50 问） | 1 天 ⭐ |
+| 6b | **图增强检索（GraphRAG 思路）** | WeKnora 自研 GraphRAG（**强依赖 Neo4j + APOC，默认关闭**） | **改参考 LightRAG**：实体/关系抽到既有 DuckDB 表（零新依赖、零新服务），产出第三路 chunk 排序并入 RRF（重排前融合，与 WeKnora 时机一致）；可插拔抽取器 + 按 chunk 降级 + 空排名零贡献。**已完成并做了三臂 A/B：单跳类零退化、关系类净打平 → 默认关闭、不写效果数字**。见 `图增强检索-AB评测.md` | ~~3–5 天~~ **已完成** ✅ |
 
 ### T1：工程正确性修复（我们实测发现的，WeKnora 也有对应实践）
 
 | # | 问题 | 依据 | 修法 |
 |---|---|---|---|
-| 7 | HNSW 索引未被查询计划命中（EXPLAIN 实测） | 退化为暴力精确扫描 | 调整查询形状适配 DuckDB VSS 要求；或直接接受精确扫描（10K 规模 46ms 可接受），写进文档 |
+| 7 | **HNSW 索引未被真实检索路径命中**（EXPLAIN 实测，根因已精确定位） | `vector_search` 同时投影 `1.0 - array_cosine_distance(...) AS sim` 与 `… AS dist`；投影里出现第二个距离表达式后规划器放弃 `HNSW_INDEX_SCAN` 退回 `SEQ_SCAN`。去掉 `sim` 只选 `chunk_id, dist` → **立即命中**（2026-09-28 复现） | 首选**去掉 `sim` 投影**（改为在 Python 侧算 `1 - dist`），即可恢复索引扫描；但注意距离算子本身 ~100–400 ns/元素，10k×1536 有无索引差别不大（1635 vs 1655 ms），所以更值得做的是**把距离计算搬出 DuckDB**（numpy/BLAS 同扫描 3.45 ms，差 500–2000 倍）。验证时务必用真实查询形状——`bench_hnsw_matrix.py` 用的简化形状会误报"命中" |
 | 8 | rerank 失败即整体失败 | WeKnora 降级为检索顺序 | try/except 包 `rerank_chunks`，失败时按检索分数返回 + warning |
 | 9 | hybrid 权重 0.75/0.25 硬编码 | 源码写死 | 提为 `RAGLiteConfig` 字段，可调参 |
 | 10 | 六阶段打点可观测缺失 | WeKnora 用 Langfuse span 树 | 解析/切分/嵌入/检索/组装/生成六阶段计时 + 日志输出（轻量版，不必上 Langfuse） |
