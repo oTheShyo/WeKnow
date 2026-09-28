@@ -87,9 +87,12 @@ evals/
 *.wal
 *.log
 *.db.lock
+# filelock handles created by the benchmark scripts
+bench_*.lock
 bench_results.json
 # Raw stdout captured from the diagnostic scripts (regenerate with the .py files)
 bench_*.out
+bench_log.txt
 
 # WorkBuddy workspace data
 .workbuddy/
