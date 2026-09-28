@@ -25,6 +25,7 @@ from raglite._database import (
 )
 from raglite._embed import embed_strings
 from raglite._extract import extract_with_llm
+from raglite._graph import graph_search
 from raglite._insert import _get_database_metadata
 from raglite._metadata_filter import build_metadata_filter_condition, build_metadata_filter_sql
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter, MetadataValue
@@ -279,13 +280,19 @@ def hybrid_search(  # noqa: PLR0913
     oversample: int = 2,
     vector_search_weight: float | None = None,
     keyword_search_weight: float | None = None,
+    graph_search_weight: float | None = None,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
-    """Search chunks by combining ANN vector search with BM25 keyword search.
+    """Search chunks by combining ANN vector search with BM25 keyword search and a graph ranking.
 
     The RRF weights default to the config values (`hybrid_vector_weight` /
-    `hybrid_keyword_weight`) so that the weights are configurable instead of hardcoded.
+    `hybrid_keyword_weight` / `hybrid_graph_weight`) so that the weights are configurable instead
+    of hardcoded.
+
+    The graph ranking is only fused in when `config.graph.enabled` is set, and because an empty
+    ranking contributes nothing to RRF, a query that matches no graph entity behaves exactly like
+    the two-path baseline. As in WeKnora, the graph ranking is merged *before* reranking.
     """
     # Read the config and resolve the weights.
     config = config or RAGLiteConfig()
@@ -295,17 +302,30 @@ def hybrid_search(  # noqa: PLR0913
     keyword_search_weight = (
         config.hybrid_keyword_weight if keyword_search_weight is None else keyword_search_weight
     )
-    # Run both searches.
+    graph_search_weight = (
+        config.hybrid_graph_weight if graph_search_weight is None else graph_search_weight
+    )
+    # Run the vector and keyword searches.
     vs_chunk_ids, _ = vector_search(
         query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
     )
     ks_chunk_ids, _ = keyword_search(
         query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
     )
+    rankings = [vs_chunk_ids, ks_chunk_ids]
+    weights = [vector_search_weight, keyword_search_weight]
+    # Add the graph ranking as a third path when the graph extension is enabled.
+    if config.graph.enabled:
+        gs_chunk_ids, _ = graph_search(
+            query,
+            num_results=oversample * num_results,
+            metadata_filter=metadata_filter,
+            config=config,
+        )
+        rankings.append(gs_chunk_ids)
+        weights.append(graph_search_weight)
     # Combine the results with Reciprocal Rank Fusion (RRF).
-    chunk_ids, hybrid_score = reciprocal_rank_fusion(
-        [vs_chunk_ids, ks_chunk_ids], weights=[vector_search_weight, keyword_search_weight]
-    )
+    chunk_ids, hybrid_score = reciprocal_rank_fusion(rankings, weights=weights)
     chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
     return chunk_ids, hybrid_score
 

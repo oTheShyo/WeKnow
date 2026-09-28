@@ -1,12 +1,37 @@
 """RAGLite."""
 
 from raglite._cache import cached_hybrid_search, get_retrieval_cache
-from raglite._config import DEFAULT_VLM_PROMPT, MistralOCRConfig, MultimodalConfig, RAGLiteConfig
+from raglite._config import (
+    DEFAULT_GRAPH_EXTRACTION_PROMPT,
+    DEFAULT_VLM_PROMPT,
+    GraphConfig,
+    MistralOCRConfig,
+    MultimodalConfig,
+    RAGLiteConfig,
+)
 from raglite._database import Document
 from raglite._delete import delete_documents, delete_documents_by_metadata
 from raglite._eval import answer_evals, evaluate, insert_evals
 from raglite._eval_generation import bleu_n, evaluate_generation, rouge_l_f1
 from raglite._extract import expand_document_metadata
+from raglite._graph import (
+    CooccurrenceExtractor,
+    EntityExtractor,
+    ExtractedEntity,
+    ExtractedRelation,
+    GraphError,
+    GraphExtraction,
+    LLMEntityExtractor,
+    build_graph,
+    clear_graph,
+    entity_id_for_title,
+    graph_search,
+    graph_stats,
+    normalize_entity_title,
+    pending_graph_chunks,
+    prune_graph,
+    resolve_entity_extractor,
+)
 from raglite._incremental import diff_documents, sync_documents
 from raglite._insert import insert_documents
 from raglite._iterative_search import (
@@ -52,6 +77,25 @@ __all__ = [
     "RAGLiteConfig",
     "MistralOCRConfig",
     "MistralOCRError",
+    # Graph-enhanced retrieval
+    "GraphConfig",
+    "DEFAULT_GRAPH_EXTRACTION_PROMPT",
+    "GraphError",
+    "GraphExtraction",
+    "ExtractedEntity",
+    "ExtractedRelation",
+    "EntityExtractor",
+    "LLMEntityExtractor",
+    "CooccurrenceExtractor",
+    "resolve_entity_extractor",
+    "normalize_entity_title",
+    "entity_id_for_title",
+    "build_graph",
+    "prune_graph",
+    "clear_graph",
+    "pending_graph_chunks",
+    "graph_search",
+    "graph_stats",
     # Multimodal document processing (OCR + VLM)
     "MultimodalConfig",
     "MultimodalError",

@@ -21,6 +21,7 @@ ChunkId = str
 DocumentId = str
 EvalId = str
 IndexId = str
+GraphEntityId = str
 
 DistanceMetric = Literal["cosine", "dot", "l1", "l2"]
 

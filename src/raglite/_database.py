@@ -40,6 +40,7 @@ from raglite._typing import (
     EvalId,
     FloatMatrix,
     FloatVector,
+    GraphEntityId,
     IndexId,
     MetadataValue,
     PickledObject,
@@ -516,6 +517,74 @@ class Eval(SQLModel, table=True):
             ground_truth=ground_truth,
             metadata_=processed_kwargs,
         )
+
+
+# The graph tables deliberately declare no foreign keys. DuckDB *does* enforce foreign keys
+# immediately (see `_delete_documents_duckdb`), and RAGLite deletes chunks with explicit ordered
+# DELETEs rather than by cascade, so a foreign key here would make deleting a document fail
+# whenever the graph still referenced one of its chunks. The graph is a derived index that can
+# always be rebuilt from the chunks, so it must never be able to block primary data deletion.
+# `raglite._graph.prune_graph` performs the corresponding cleanup instead, and `graph_search`
+# only ever returns chunks that still exist.
+
+
+class GraphEntity(SQLModel, table=True):
+    """A knowledge graph entity extracted from one or more chunks.
+
+    The id is a hash of the normalised, case-folded title, so the same entity mentioned by
+    different chunks or documents collapses onto a single node whose chunk links aggregate across
+    the corpus.
+    """
+
+    __tablename__ = "graph_entity"
+
+    # Table columns.
+    id: GraphEntityId = Field(..., primary_key=True)
+    title: str = Field(..., index=True)
+    entity_type: str = Field(default="other")
+    description: str = Field(default="")
+
+
+class GraphEntityChunk(SQLModel, table=True):
+    """The chunks an entity was extracted from (many-to-many)."""
+
+    __tablename__ = "graph_entity_chunk"
+
+    # Table columns.
+    entity_id: GraphEntityId = Field(..., primary_key=True, index=True)
+    chunk_id: ChunkId = Field(..., primary_key=True, index=True)
+
+
+class GraphRelation(SQLModel, table=True):
+    """A knowledge graph relation between two entities.
+
+    The primary key is the (source, target) pair, so repeated mentions of the same relation
+    aggregate into one edge whose weight records how often it was observed.
+    """
+
+    __tablename__ = "graph_relation"
+
+    # Table columns.
+    source_id: GraphEntityId = Field(..., primary_key=True, index=True)
+    target_id: GraphEntityId = Field(..., primary_key=True)
+    description: str = Field(default="")
+    weight: float = Field(default=1.0)
+
+
+class GraphChunk(SQLModel, table=True):
+    """Bookkeeping for content-hash incremental graph extraction.
+
+    A chunk is listed here once it has been through entity extraction, including chunks that
+    yielded no entities. Because a document's chunk ids are derived from its content hash, an
+    unchanged document keeps its chunk ids and is therefore skipped on the next graph build. A
+    chunk whose extraction failed is deliberately *not* listed, so that the next build retries it.
+    """
+
+    __tablename__ = "graph_chunk"
+
+    # Table columns.
+    chunk_id: ChunkId = Field(..., primary_key=True)
+    document_id: DocumentId = Field(..., index=True)
 
 
 @lru_cache(maxsize=1)

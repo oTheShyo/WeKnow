@@ -7,7 +7,7 @@ versions, and insert only the new or changed ones. This module provides that orc
 """
 
 from collections.abc import Sequence
-from typing import Literal
+from typing import Any, Literal
 
 from sqlmodel import Session, col, select
 
@@ -62,13 +62,18 @@ def sync_documents(  # noqa: PLR0913
     max_workers: int | None = None,
     config: RAGLiteConfig | None = None,
     invalidate_query_adapter: bool = False,
-) -> dict[str, list[DocumentId]]:
+) -> dict[str, Any]:
     """Incrementally synchronize documents with the database by content hash.
 
     Documents whose content is unchanged are skipped (same content hash implies the same document
     id). Changed documents get a new id, so their stale version is deleted before reinsertion.
     Documents that are new are inserted. This makes document updates cheap: only the delta goes
     through parsing, splitting, and embedding.
+
+    When the graph extension is enabled (`config.graph.enabled`), the graph layer is kept in step
+    for the same delta: graph rows of deleted chunks are pruned, and the newly inserted documents
+    are graph-extracted. Because chunk ids are content hashes, an unchanged document is skipped by
+    the graph layer as well.
 
     Parameters
     ----------
@@ -93,7 +98,8 @@ def sync_documents(  # noqa: PLR0913
     Returns
     -------
     dict
-        A report with the inserted, unchanged, and deleted document ids.
+        A report with the inserted, unchanged, and deleted document ids, plus a `"graph"` key with
+        the graph build report when the graph extension is enabled.
     """
     from raglite._delete import delete_documents
     from raglite._insert import insert_documents
@@ -103,7 +109,7 @@ def sync_documents(  # noqa: PLR0913
     documents = list({doc.id: doc for doc in documents}.values())
     documents = [doc for doc in documents if isinstance(doc.content, str) and doc.content.strip()]
     document_keys = {doc.id: _document_key_value(doc, key) for doc in documents}
-    report: dict[str, list[DocumentId]] = {"inserted": [], "unchanged": [], "deleted": []}
+    report: dict[str, Any] = {"inserted": [], "unchanged": [], "deleted": []}
     # Look up the existing documents that match the sync keys of the input documents.
     with Session(create_database_engine(config)) as session:
         existing_by_key = _existing_documents_by_key(session, key, list(set(document_keys.values())))
@@ -154,6 +160,18 @@ def sync_documents(  # noqa: PLR0913
     # Any index mutation invalidates the retrieval result cache.
     if report["inserted"] or report["deleted"]:
         get_retrieval_cache().clear()
+    # Keep the graph layer in step with the vector layer for the same delta. This only runs when
+    # the graph extension is explicitly enabled, and it is a no-op when nothing changed.
+    if config.graph.enabled and (report["inserted"] or report["deleted"]):
+        from raglite._graph import build_graph, prune_graph
+
+        prune_graph(config=config)
+        report["graph"] = build_graph(
+            document_ids=report["inserted"] or None,
+            max_workers=max_workers,
+            prune_missing=False,
+            config=config,
+        )
     return report
 
 

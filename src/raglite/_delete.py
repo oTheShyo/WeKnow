@@ -252,6 +252,14 @@ def delete_documents(
                 invalidate_query_adapter=invalidate_query_adapter,
             )
 
+    # Keep the graph layer consistent with the vector layer. The graph tables declare no foreign
+    # keys (so they cannot block the deletion above), which means this cleanup is what removes the
+    # links that the deleted chunks left behind.
+    if config.graph.enabled:
+        from raglite._graph import prune_graph
+
+        prune_graph(config=config)
+
     # Any index mutation invalidates the retrieval result cache.
     if deleted_count:
         get_retrieval_cache().clear()

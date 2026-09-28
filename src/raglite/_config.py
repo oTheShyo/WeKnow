@@ -14,6 +14,7 @@ from raglite._lazy_llama import llama_supports_gpu_offload
 from raglite._typing import ChunkId, MetadataFilter, SearchMethod
 
 if TYPE_CHECKING:
+    from raglite._graph import EntityExtractor
     from raglite._multimodal import OCREngine, VLMEngine
 
 # Suppress rerankers output on import until [1] is fixed.
@@ -94,6 +95,62 @@ class MultimodalConfig:
     extraction_max_workers: int = 4
 
 
+# The default instruction given to the entity extractor. It asks for a retrieval-oriented graph
+# rather than an exhaustive one: a small number of high-value entities and their explicit
+# relations, each grounded in the source text.
+DEFAULT_GRAPH_EXTRACTION_PROMPT = (
+    "You are a knowledge graph extractor with perfect precision and recall.\n"
+    "Read the source text and extract the entities it mentions and the relations between them.\n"
+    "Only extract entities and relations that are explicitly stated in the text.\n"
+    "Use each entity's canonical name as written in the text; never invent or translate names.\n"
+    "Give every entity a one-sentence description grounded in the text.\n"
+    "Give every relation a short description of how the source entity relates to the target.\n"
+    "Prefer a small number of high-value entities over an exhaustive list.\n"
+    "Answer in the same language as the source text."
+)
+
+
+@dataclass(frozen=True)
+class GraphConfig:
+    """Configuration for the graph-enhanced retrieval path.
+
+    This follows the LightRAG approach rather than WeKnora's: entities and relations are stored in
+    the existing DuckDB/SQLModel database (no Neo4j, no extra service, and no new dependency), and
+    the resulting chunk ranking joins reciprocal rank fusion as a third weighted ranking next to
+    vector search and BM25.
+
+    The extractor is injectable so the graph can be built fully offline (a deterministic rule-based
+    extractor, useful for tests and ablations), fully in the cloud (an LLM identifier), or with
+    test doubles — mirroring the OCREngine / VLMEngine injection pattern of MultimodalConfig.
+
+    This path is off by default. Every chunk costs one extra LLM call at index time, and the graph
+    ranking only adds value for relational or corpus-level questions, so it should be enabled only
+    after benchmarking it against the two-path baseline on a real question set.
+    """
+
+    # Whether the graph ranking participates in hybrid search. Off by default (see above).
+    enabled: bool = False
+    # The entity extractor: None builds an LLM extractor from the RAGLite LLM config, a string is
+    # used as the LiteLLM model identifier of an LLM extractor, and an EntityExtractor instance is
+    # used as-is.
+    extractor: "EntityExtractor | str | None" = field(default=None, compare=False)
+    extraction_prompt: str = DEFAULT_GRAPH_EXTRACTION_PROMPT
+    extraction_temperature: float = 0.1
+    extraction_max_tokens: int = 1024
+    extraction_max_workers: int = 4
+    # Entities whose title is longer than this many characters are dropped (usually a whole
+    # sentence rather than a name).
+    max_entity_title_length: int = 120
+    # Retrieval: how many seed entities to use, how many hops to expand, and how much weight a
+    # neighbouring entity keeps relative to a directly matched one.
+    seed_entity_limit: int = 8
+    neighbor_hops: int = 1
+    neighbor_weight: float = 0.5
+    # Whether to ask the LLM to extract the question's entities at query time. Off by default
+    # because it costs one extra LLM call per query; the lexical matcher needs no model call.
+    query_extraction: bool = False
+
+
 # Lazily load the default search method to avoid circular imports.
 # TODO: Replace with search_and_rerank_chunk_spans after benchmarking.
 def _vector_search(
@@ -158,6 +215,11 @@ class RAGLiteConfig:
     # Hybrid search config: RRF weights for the vector and keyword rankings.
     hybrid_vector_weight: float = 0.75
     hybrid_keyword_weight: float = 0.25
+    # The RRF weight of the graph ranking. Deliberately smaller than the vector and keyword
+    # weights so that a noisy graph ranking cannot dominate the fusion.
+    hybrid_graph_weight: float = 0.1
+    # Graph-enhanced retrieval config (entity/relation extraction and graph ranking).
+    graph: GraphConfig = field(default_factory=GraphConfig, compare=False)
     # Low-confidence secondary retrieval: when the top rerank score is below the confidence
     # threshold, retrieve again with an expanded candidate pool (`secondary_retrieval_multiplier`
     # times the original pool). The confidence signal is the rerank score; without a reranker the
