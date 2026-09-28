@@ -1,7 +1,7 @@
 """RAGLite."""
 
 from raglite._cache import cached_hybrid_search, get_retrieval_cache
-from raglite._config import MistralOCRConfig, RAGLiteConfig
+from raglite._config import DEFAULT_VLM_PROMPT, MistralOCRConfig, MultimodalConfig, RAGLiteConfig
 from raglite._database import Document
 from raglite._delete import delete_documents, delete_documents_by_metadata
 from raglite._eval import answer_evals, evaluate, insert_evals
@@ -14,6 +14,24 @@ from raglite._iterative_search import (
     search_with_secondary_retrieval,
 )
 from raglite._mistral_ocr import MistralOCRError
+from raglite._multimodal import (
+    ImageExtraction,
+    LiteLLMVLMEngine,
+    MultimodalError,
+    NoOCREngine,
+    OCREngine,
+    RapidOCREngine,
+    StaticVLMEngine,
+    TesseractOCREngine,
+    VLMEngine,
+    classify_image,
+    extract_image,
+    extract_images,
+    image_to_markdown,
+    is_multimodal_document,
+    multimodal_to_markdown,
+    rasterize_pdf,
+)
 from raglite._query_adapter import update_query_adapter
 from raglite._rag import add_context, async_rag, rag, retrieve_context
 from raglite._router import route_search_method, routed_search
@@ -34,6 +52,25 @@ __all__ = [
     "RAGLiteConfig",
     "MistralOCRConfig",
     "MistralOCRError",
+    # Multimodal document processing (OCR + VLM)
+    "MultimodalConfig",
+    "MultimodalError",
+    "DEFAULT_VLM_PROMPT",
+    "ImageExtraction",
+    "OCREngine",
+    "VLMEngine",
+    "RapidOCREngine",
+    "TesseractOCREngine",
+    "NoOCREngine",
+    "LiteLLMVLMEngine",
+    "StaticVLMEngine",
+    "classify_image",
+    "extract_image",
+    "extract_images",
+    "image_to_markdown",
+    "multimodal_to_markdown",
+    "rasterize_pdf",
+    "is_multimodal_document",
     # Insert
     "Document",
     "insert_documents",

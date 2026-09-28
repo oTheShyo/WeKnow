@@ -5,13 +5,16 @@ import os
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 from raglite._lazy_llama import llama_supports_gpu_offload
 from raglite._typing import ChunkId, MetadataFilter, SearchMethod
+
+if TYPE_CHECKING:
+    from raglite._multimodal import OCREngine, VLMEngine
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
@@ -41,6 +44,54 @@ class MistralOCRConfig:
     # Image types to exclude from the output (e.g., {"logo", "icon"}).
     exclude_image_types: frozenset[str] = frozenset()
     model: str = "mistral-ocr-latest"
+
+
+# The default instruction given to the vision language model when describing an image. It asks for
+# a retrieval-oriented annotation rather than free-form prose: text transcription first (so OCR
+# misses are recovered), then a factual description of the visual content.
+DEFAULT_VLM_PROMPT = (
+    "Transcribe all visible text in this image verbatim, then describe any charts, tables, "
+    "diagrams, or other visual content. Be concise, factual, and complete. "
+    "Answer in the same language as the text in the image."
+)
+
+
+@dataclass(frozen=True)
+class MultimodalConfig:
+    """Configuration for the multimodal (OCR + VLM) document processor.
+
+    The processor handles images directly and PDFs by rasterising their pages, then runs two
+    independent extraction stages over each page: OCR recovers text rendered inside the image,
+    and a vision language model describes the visual content that OCR cannot capture.
+
+    Both stages are optional and both engines are injectable, so the processor can run fully
+    offline (`ocr_engine="auto"`, `vlm=None`), fully in the cloud (`vlm="openai/gpt-4o-mini"`),
+    or with test doubles (`ocr_engine=<OCREngine>`, `vlm=<VLMEngine>`).
+    """
+
+    # OCR stage: "auto" picks the first installed engine (RapidOCR, then Tesseract), "none"
+    # disables OCR, and an OCREngine instance is used as-is.
+    ocr_engine: "OCREngine | str | None" = None
+    # Languages requested from the RapidOCR engine.
+    ocr_languages: tuple[str, ...] = ("ch", "en")
+    # Language packs requested from the Tesseract engine.
+    tesseract_languages: tuple[str, ...] = ("eng",)
+    include_ocr_text: bool = True
+    # Vision language model stage: a LiteLLM model identifier, a VLMEngine instance, or None to
+    # skip image description entirely.
+    vlm: "VLMEngine | str | None" = None
+    vlm_api_key: str | None = None
+    vlm_api_base: str | None = None
+    vlm_prompt: str = DEFAULT_VLM_PROMPT
+    vlm_max_tokens: int = 512
+    vlm_temperature: float = 0.0
+    vlm_num_retries: int = 3
+    describe_images: bool = True
+    # PDF rasterisation: resolution in dots per inch, and an optional page cap for large reports.
+    pdf_dpi: int = 200
+    max_pdf_pages: int | None = None
+    # Number of worker threads used to extract the pages of a document in parallel.
+    extraction_max_workers: int = 4
 
 
 # Lazily load the default search method to avoid circular imports.
@@ -86,7 +137,7 @@ class RAGLiteConfig:
     # Chunk config used to partition documents into chunks.
     chunk_max_size: int = 2048  # Max number of characters per chunk.
     # Document processing config. None = default processor.
-    document_processor: MistralOCRConfig | None = None
+    document_processor: MistralOCRConfig | MultimodalConfig | None = None
     # Vector search config.
     vector_search_distance_metric: Literal["cosine", "dot", "l2"] = "cosine"
     vector_search_multivector: bool = True

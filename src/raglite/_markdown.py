@@ -10,7 +10,7 @@ import numpy as np
 from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
 
-from raglite._config import MistralOCRConfig, RAGLiteConfig
+from raglite._config import MistralOCRConfig, MultimodalConfig, RAGLiteConfig
 
 logger = logging.getLogger(__name__)
 
@@ -235,14 +235,32 @@ def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None)
         Path to the document file.
     config
         Optional RAGLite configuration. If document_processor is set to a
+        MultimodalConfig, runs the OCR + VLM pipeline over images and PDFs. If it is set to a
         MistralOCRConfig, uses MistralOCR instead of the default processor.
 
     Returns
     -------
     str
         Document content as GitHub Flavored Markdown.
+
+    Raises
+    ------
+    ValueError
+        If the document is an image and no multimodal document processor is configured.
     """
     config = config or RAGLiteConfig()
+
+    if isinstance(config.document_processor, MultimodalConfig):
+        # Lazy import to avoid pulling in the multimodal stack when it is not used.
+        from raglite._multimodal import is_multimodal_document, multimodal_to_markdown
+
+        if is_multimodal_document(doc_path):
+            return multimodal_to_markdown(doc_path, processor_config=config.document_processor)
+        logger.debug(
+            "The multimodal processor does not support file type: %s\n"
+            "Falling back to the default processor.",
+            doc_path,
+        )
 
     if isinstance(config.document_processor, MistralOCRConfig):
         # Lazy import to avoid requiring mistralai when not using MistralOCR.
@@ -253,5 +271,16 @@ def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None)
         logger.debug(
             "Mistral does not support file type: %s\nFalling back to default processor.", doc_path
         )
+
+    # Guard against silently decoding binary image data as text.
+    from raglite._multimodal import IMAGE_EXTENSIONS
+
+    if doc_path.suffix.lower() in IMAGE_EXTENSIONS:
+        error_message = (
+            f"To extract content from an image ({doc_path.name}), configure a multimodal or OCR "
+            "document processor, e.g. "
+            "`RAGLiteConfig(document_processor=MultimodalConfig(vlm='openai/gpt-4o-mini'))`."
+        )
+        raise ValueError(error_message)
 
     return _default_document_to_markdown(doc_path)
