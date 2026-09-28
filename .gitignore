@@ -88,6 +88,8 @@ evals/
 *.log
 *.db.lock
 bench_results.json
+# Raw stdout captured from the diagnostic scripts (regenerate with the .py files)
+bench_*.out
 
 # WorkBuddy workspace data
 .workbuddy/
