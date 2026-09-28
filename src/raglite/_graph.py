@@ -1,9 +1,9 @@
 """Graph-enhanced retrieval: entity/relation extraction and a third RRF ranking.
 
-This module adds a graph path to RAGLite's hybrid search, following LightRAG's approach rather
-than WeKnora's: the graph lives in the same DuckDB/PostgreSQL database as the chunks (so there is
-no Neo4j, no extra service, and no new dependency), and the chunk ranking it produces joins
-reciprocal rank fusion as a third weighted ranking next to vector search and BM25.
+This module adds a graph path to RAGLite's hybrid search. The storage follows LightRAG rather than
+WeKnora — the graph lives in the same DuckDB/PostgreSQL database as the chunks, so there is no
+Neo4j, no extra service, and no new dependency — while the weighting, the chunk-level projection,
+and the query-time expansion follow WeKnora's `graph.go` and `search_entity.go`.
 
 The pipeline has two halves.
 
@@ -16,12 +16,29 @@ Index side (`build_graph`)
     its chunk ids and is therefore skipped — which is what gives the graph layer the same
     incremental behaviour as the vector layer.
 
+    Two WeKnora mechanisms then run over the result.
+
+    1. `recompute_relation_weights` scores every edge by pointwise mutual information and by the
+       strength the extractor stated, and scales the combination into the 1-10 range. PMI is what
+       makes an edge meaningful: two entities that merely both occur often are weakly related even
+       if they co-occur a lot, while two rarer entities that always appear together are strongly
+       related.
+    2. `build_chunk_relations` projects the entity graph onto the chunks: two chunks that share an
+       entity are linked, with the relation's weight and the endpoints' combined degree. This is
+       the projection that lets retrieval reach a chunk that never mentions the query entity.
+
 Query side (`graph_search`)
-    The question is matched against the stored entity titles (lexically, so no model call), the
-    matched entities are expanded by one hop over the relations, and the chunks linked to the
-    resulting weighted entity set are ranked by accumulated weight. That ranking is fed into
-    `reciprocal_rank_fusion`, which is deliberately where WeKnora also merges its graph results:
-    before reranking, not after.
+    The question is matched against the stored entity titles (lexically, so no model call, unless
+    `GraphConfig.query_extraction` asks the extractor for the question's entities), the matched
+    entities are expanded over the relations, and the chunks linked to the resulting weighted
+    entity set are scored. Those chunks are then expanded over the chunk graph, so a chunk reached
+    through a related entity can pull in the chunk that entity shares with it. The ranking is fed
+    into `reciprocal_rank_fusion`, which is deliberately where WeKnora also merges its graph
+    results: before reranking, not after.
+
+    `graph_search` accepts `exclude_chunk_ids` for WeKnora's `filterSeenChunk` behaviour: the
+    chunks the other paths already found can be dropped so the graph path only contributes new
+    ones. It is off by default, because RRF already rewards agreement between paths.
 
 Both halves degrade rather than fail: an extractor error costs one chunk's extraction and is
 reported in the build report, a graph ranking with no matches is simply empty, and an empty
@@ -35,15 +52,17 @@ turned on only after benchmarking it against the two-path baseline on a real que
 
 from __future__ import annotations
 
+import math
 import re
 import warnings
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field as PydanticField
+from pydantic import BaseModel
+from pydantic import Field as PydanticField
 from sqlalchemy import delete as sa_delete
 from sqlmodel import Session, col, func, select
 
@@ -51,6 +70,7 @@ from raglite._config import DEFAULT_GRAPH_EXTRACTION_PROMPT, GraphConfig, RAGLit
 from raglite._database import (
     Chunk,
     GraphChunk,
+    GraphChunkRelation,
     GraphEntity,
     GraphEntityChunk,
     GraphRelation,
@@ -67,6 +87,8 @@ MAX_SEED_ENTITY_CANDIDATES = 64
 # Upper bound on the candidate chunks carried into the existence and metadata-filter query, so a
 # broad query against a large graph cannot build an unbounded `IN` clause.
 GRAPH_CANDIDATE_POOL = 512
+# The scale of the extractor's stated strength, which WeKnora asks for on a 1-10 scale.
+MAX_RELATION_STRENGTH = 10.0
 
 
 class GraphError(Exception):
@@ -100,6 +122,17 @@ class ExtractedRelation(BaseModel):
     description: str = PydanticField(
         default="", description="How the source entity relates to the target entity."
     )
+    strength: float = PydanticField(
+        default=1.0,
+        description=(
+            "How strongly the text states this relation, from 1 (mentioned in passing) to 10 (the "
+            "text is about this relation)."
+        ),
+    )
+
+    def normalized_strength(self) -> float:
+        """Return the stated strength on a 0-1 scale, clamped to the 1-10 range."""
+        return min(max(self.strength, 1.0), MAX_RELATION_STRENGTH) / MAX_RELATION_STRENGTH
 
 
 class GraphExtraction(BaseModel):
@@ -132,6 +165,24 @@ class EntityExtractor(Protocol):
     def extract(self, text: str) -> GraphExtraction:
         """Extract the entities and relations stated in `text`."""
         ...  # pragma: no cover
+
+
+def build_extraction_prompt(graph_config: GraphConfig) -> str:
+    """Build the extraction prompt, appending WeKnora's `ExtractConfig` constraints.
+
+    WeKnora injects the permitted entity types, relation types, and worked examples into the
+    extraction prompt as few-shot constraints. RAGLite does the same when they are configured, and
+    leaves the prompt untouched when they are not: an over-constrained schema silently drops the
+    entities a personal corpus is actually about.
+    """
+    lines = [graph_config.extraction_prompt]
+    if graph_config.entity_types:
+        lines.append("Entity types to use: " + ", ".join(graph_config.entity_types) + ".")
+    if graph_config.relation_types:
+        lines.append("Relation types to use: " + ", ".join(graph_config.relation_types) + ".")
+    if graph_config.extraction_examples.strip():
+        lines.append("Examples:\n" + graph_config.extraction_examples.strip())
+    return "\n".join(lines)
 
 
 @dataclass
@@ -168,7 +219,9 @@ class LLMEntityExtractor:
 # matched directly; CJK has no segmenter available, so it is mined as closed n-grams instead (see
 # `_closed_cjk_ngrams`).
 _LATIN_TERM_PATTERN = re.compile(r"[A-Z][A-Za-z0-9]*(?:[ _\-][A-Z][A-Za-z0-9]*)*")
-_QUOTED_TERM_PATTERN = re.compile(r"「[^」\n]{1,40}」|《[^》\n]{1,40}》|\"[^\"\n]{1,40}\"|“[^”\n]{1,40}”")
+_QUOTED_TERM_PATTERN = re.compile(
+    r"「[^」\n]{1,40}」|《[^》\n]{1,40}》|\"[^\"\n]{1,40}\"|“[^”\n]{1,40}”"
+)
 _CJK_RUN_PATTERN = re.compile(r"[\u4e00-\u9fff]+")
 CJK_NGRAM_MIN = 2
 CJK_NGRAM_MAX = 4
@@ -305,14 +358,13 @@ class CooccurrenceExtractor:
                             source=surface[source],
                             target=surface[target],
                             description="co-occurs in the same sentence",
+                            strength=1.0,
                         )
                     )
         return GraphExtraction(entities=entities, relations=relations)
 
 
-def resolve_entity_extractor(
-    graph_config: GraphConfig, config: RAGLiteConfig
-) -> EntityExtractor:
+def resolve_entity_extractor(graph_config: GraphConfig, config: RAGLiteConfig) -> EntityExtractor:
     """Resolve the configured extractor into an `EntityExtractor`.
 
     `None` builds an LLM extractor on the RAGLite LLM, a string is used as the LiteLLM model
@@ -323,14 +375,14 @@ def resolve_entity_extractor(
     if extractor is None:
         return LLMEntityExtractor(
             config,
-            prompt=graph_config.extraction_prompt,
+            prompt=build_extraction_prompt(graph_config),
             temperature=graph_config.extraction_temperature,
             max_tokens=graph_config.extraction_max_tokens,
         )
     if isinstance(extractor, str):
         return LLMEntityExtractor(
             replace(config, llm=extractor),
-            prompt=graph_config.extraction_prompt,
+            prompt=build_extraction_prompt(graph_config),
             temperature=graph_config.extraction_temperature,
             max_tokens=graph_config.extraction_max_tokens,
         )
@@ -415,13 +467,27 @@ def prune_graph(*, config: RAGLiteConfig | None = None) -> dict[str, int]:
     incremental delete.
     """
     config = config or RAGLiteConfig()
-    removed = {"chunk_links": 0, "chunks": 0, "entities": 0, "relations": 0}
+    removed = {"chunk_links": 0, "chunk_relations": 0, "chunks": 0, "entities": 0, "relations": 0}
     with Session(create_database_engine(config)) as session:
         # Drop the links of chunks that are gone, then the bookkeeping rows of those same chunks.
         removed["chunk_links"] = _rowcount(
             session.execute(
                 sa_delete(GraphEntityChunk).where(
                     ~col(GraphEntityChunk.chunk_id).in_(select(Chunk.id))
+                )
+            )
+        )
+        # Drop the projected chunk-chunk edges whose endpoints are gone, on either side.
+        removed["chunk_relations"] = _rowcount(
+            session.execute(
+                sa_delete(GraphChunkRelation).where(
+                    ~col(GraphChunkRelation.source_chunk_id).in_(select(Chunk.id))
+                )
+            )
+        ) + _rowcount(
+            session.execute(
+                sa_delete(GraphChunkRelation).where(
+                    ~col(GraphChunkRelation.target_chunk_id).in_(select(Chunk.id))
                 )
             )
         )
@@ -451,10 +517,16 @@ def prune_graph(*, config: RAGLiteConfig | None = None) -> dict[str, int]:
 
 
 def clear_graph(*, config: RAGLiteConfig | None = None) -> None:
-    """Delete the whole graph (entities, relations, links, and extraction bookkeeping)."""
+    """Delete the whole graph (entities, relations, links, projection, and bookkeeping)."""
     config = config or RAGLiteConfig()
     with Session(create_database_engine(config)) as session:
-        for table in (GraphEntityChunk, GraphRelation, GraphEntity, GraphChunk):
+        for table in (
+            GraphChunkRelation,
+            GraphEntityChunk,
+            GraphRelation,
+            GraphEntity,
+            GraphChunk,
+        ):
             session.execute(sa_delete(table))
         session.commit()
 
@@ -474,7 +546,7 @@ def pending_graph_chunks(
         return [chunk_id for chunk_id in session.exec(statement).all() if chunk_id not in done]
 
 
-def build_graph(  # noqa: PLR0915
+def build_graph(
     *,
     document_ids: Sequence[DocumentId] | None = None,
     max_workers: int | None = None,
@@ -499,7 +571,7 @@ def build_graph(  # noqa: PLR0915
     config
         The RAGLite config to use.
 
-    returns
+    Returns
     -------
     dict
         A report with the number of extracted, skipped, and failed chunks, plus the total number
@@ -535,6 +607,11 @@ def build_graph(  # noqa: PLR0915
         report["chunks_failed"] = sum(1 for extraction in extractions if extraction is None)
         _write_graph([(row[0], row[1]) for row in pending], extractions, config=config)
         report["chunks_extracted"] = len(pending) - report["chunks_failed"]
+    # WeKnora scores the edges and projects them onto the chunks after extraction: both depend on
+    # corpus-wide statistics, so they run over the whole graph rather than over the delta.
+    report["relations_scored"] = recompute_relation_weights(config=config)
+    if graph_config.build_chunk_graph:
+        report["chunk_relations"] = build_chunk_relations(config=config)
     report.update(graph_stats(config=config))
     return report
 
@@ -553,7 +630,8 @@ def _write_graph(
     entity_descriptions: dict[GraphEntityId, str] = {}
     entity_chunks: defaultdict[GraphEntityId, set[ChunkId]] = defaultdict(set)
     relation_descriptions: dict[tuple[GraphEntityId, GraphEntityId], str] = {}
-    relation_weights: defaultdict[tuple[GraphEntityId, GraphEntityId], float] = defaultdict(float)
+    relation_observations: defaultdict[tuple[GraphEntityId, GraphEntityId], int] = defaultdict(int)
+    relation_strengths: defaultdict[tuple[GraphEntityId, GraphEntityId], float] = defaultdict(float)
     succeeded: list[tuple[ChunkId, DocumentId]] = []
     for (chunk_id, document_id), extraction in zip(rows, extractions, strict=True):
         if extraction is None:
@@ -579,7 +657,8 @@ def _write_graph(
             key = (source, target)
             if relation.description and not relation_descriptions.get(key):
                 relation_descriptions[key] = relation.description
-            relation_weights[key] += 1.0
+            relation_observations[key] += 1
+            relation_strengths[key] += relation.normalized_strength()
     if not succeeded:
         return
     with Session(create_database_engine(config)) as session:
@@ -644,19 +723,28 @@ def _write_graph(
                 existing_relations[(stored_relation.source_id, stored_relation.target_id)] = (
                     stored_relation
                 )
-        for relation_key, observed_weight in relation_weights.items():
+        for relation_key, observations in relation_observations.items():
             stored_edge = existing_relations.get(relation_key)
+            strength = relation_strengths[relation_key] / observations
             if stored_edge is None:
                 session.add(
                     GraphRelation(
                         source_id=relation_key[0],
                         target_id=relation_key[1],
                         description=relation_descriptions.get(relation_key, ""),
-                        weight=observed_weight,
+                        weight=1.0,  # `recompute_relation_weights` scores it below.
+                        strength=strength,
+                        observations=observations,
                     )
                 )
                 continue
-            stored_edge.weight += observed_weight
+            # The stored strength is the mean over every chunk that stated the relation, so an
+            # incremental build that sees one more mention cannot drag it around.
+            total = stored_edge.observations + observations
+            stored_edge.strength = (
+                stored_edge.strength * stored_edge.observations + relation_strengths[relation_key]
+            ) / total
+            stored_edge.observations = total
             if not stored_edge.description and relation_descriptions.get(relation_key):
                 stored_edge.description = relation_descriptions[relation_key]
             session.add(stored_edge)
@@ -664,6 +752,172 @@ def _write_graph(
         for chunk_id, document_id in succeeded:
             session.add(GraphChunk(chunk_id=chunk_id, document_id=document_id))
         session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Edge weighting and the chunk-level projection (WeKnora's graph.go).
+# ---------------------------------------------------------------------------
+
+
+def _entity_supports(session: Session) -> tuple[dict[GraphEntityId, int], int]:
+    """Return the number of chunks each entity occurs in, and the number of indexed chunks."""
+    rows = session.exec(
+        select(GraphEntityChunk.entity_id, func.count(col(GraphEntityChunk.chunk_id))).group_by(
+            col(GraphEntityChunk.entity_id)
+        )
+    ).all()
+    supports = {entity_id: int(count) for entity_id, count in rows}
+    total_chunks = session.exec(
+        select(func.count(func.distinct(col(GraphEntityChunk.chunk_id))))
+    ).one()
+    return supports, int(total_chunks)
+
+
+def _relation_cooccurrence_supports(
+    session: Session, pairs: set[tuple[GraphEntityId, GraphEntityId]]
+) -> dict[tuple[GraphEntityId, GraphEntityId], int]:
+    """Return, for each entity pair, the number of chunks that mention both endpoints.
+
+    Counting per pair would mean one query per relation, so the links are folded into
+    `chunk -> entities` once and only the pairs that are actually relations are counted.
+    """
+    if not pairs:
+        return {}
+    normalized_pairs = {(source, target) for source, target in pairs}
+    normalized_pairs |= {(target, source) for source, target in pairs}
+    chunk_entities: defaultdict[ChunkId, list[GraphEntityId]] = defaultdict(list)
+    for entity_id, chunk_id in session.exec(
+        select(GraphEntityChunk.entity_id, GraphEntityChunk.chunk_id)
+    ).all():
+        chunk_entities[chunk_id].append(entity_id)
+    # An entity that occurs in every chunk contributes nothing: it co-occurs with everything.
+    supports: defaultdict[tuple[GraphEntityId, GraphEntityId], int] = defaultdict(int)
+    for entity_ids in chunk_entities.values():
+        if len(entity_ids) < 2:  # noqa: PLR2004
+            continue
+        for i, source in enumerate(entity_ids):
+            for target in entity_ids[i + 1 :]:
+                if (source, target) in normalized_pairs:
+                    supports[(source, target)] += 1
+    return dict(supports)
+
+
+def pointwise_mutual_information(
+    joint_probability: float, source_probability: float, target_probability: float
+) -> float:
+    """Return WeKnora's PMI: `log2(P(x, y) / (P(x) * P(y)))`, clamped at zero.
+
+    A positive value says the two entities co-occur more than chance; zero says they co-occur no
+    more than independent entities would.
+    """
+    if joint_probability <= 0 or source_probability <= 0 or target_probability <= 0:
+        return 0.0
+    return max(math.log2(joint_probability / (source_probability * target_probability)), 0.0)
+
+
+def recompute_relation_weights(*, config: RAGLiteConfig | None = None) -> int:
+    """Score every relation by PMI and strength, as WeKnora's `graph.go` does.
+
+    The weight is `1 + weight_scale * (pmi_weight * normalised PMI + strength_weight * normalised
+    strength)`, which lands in the 1-10 range: `pmi_weight` and `strength_weight` are 0.6 and 0.4
+    in WeKnora, and `weight_scale` is 9. PMI is normalised by the strongest PMI in the graph, so
+    the scale is comparable across corpora.
+
+    Returns the number of relations that were scored.
+    """
+    config = config or RAGLiteConfig()
+    graph_config = config.graph
+    with Session(create_database_engine(config)) as session:
+        relations = list(session.exec(select(GraphRelation)).all())
+        if not relations:
+            return 0
+        supports, total_chunks = _entity_supports(session)
+        cooccurrence_supports = _relation_cooccurrence_supports(
+            session, {(relation.source_id, relation.target_id) for relation in relations}
+        )
+        # PMI first: it depends on corpus-wide statistics, so every edge is scored before any is
+        # normalised.
+        pmis: dict[tuple[GraphEntityId, GraphEntityId], float] = {}
+        for relation in relations:
+            key = (relation.source_id, relation.target_id)
+            joint = cooccurrence_supports.get(key, 0) / total_chunks if total_chunks else 0.0
+            source = supports.get(relation.source_id, 0) / total_chunks if total_chunks else 0.0
+            target = supports.get(relation.target_id, 0) / total_chunks if total_chunks else 0.0
+            pmis[key] = pointwise_mutual_information(joint, source, target)
+        max_pmi = max(pmis.values(), default=0.0)
+        for relation in relations:
+            key = (relation.source_id, relation.target_id)
+            normalized_pmi = pmis[key] / max_pmi if max_pmi > 0 else 0.0
+            normalized_strength = min(max(relation.strength, 0.0), 1.0)
+            combined = (
+                graph_config.pmi_weight * normalized_pmi
+                + graph_config.strength_weight * normalized_strength
+            )
+            relation.weight = 1.0 + graph_config.weight_scale * combined
+            session.add(relation)
+        session.commit()
+    return len(relations)
+
+
+def build_chunk_relations(*, config: RAGLiteConfig | None = None) -> int:
+    """Project the entity graph onto the chunks, as WeKnora's `buildChunkGraph` does.
+
+    Two chunks that share an entity are linked in both directions with the weight of the relation
+    that connected them and the combined degree of the endpoint entities. Retrieval can then walk
+    from a chunk that mentions the query entity to a chunk that only mentions a related one.
+
+    The projection is rebuilt in full rather than merged, because an edge's weight depends on the
+    whole graph: a partial update would either double count or drift away from the entity graph.
+
+    Returns the number of chunk-chunk edges written.
+    """
+    config = config or RAGLiteConfig()
+    graph_config = config.graph
+    with Session(create_database_engine(config)) as session:
+        session.execute(sa_delete(GraphChunkRelation))
+        relations = list(session.exec(select(GraphRelation)).all())
+        if not relations:
+            session.commit()
+            return 0
+        entity_ids = {
+            entity_id
+            for relation in relations
+            for entity_id in (relation.source_id, relation.target_id)
+        }
+        chunks_by_entity: defaultdict[GraphEntityId, list[ChunkId]] = defaultdict(list)
+        for batch in _batched(list(entity_ids)):
+            for entity_id, chunk_id in session.exec(
+                select(GraphEntityChunk.entity_id, GraphEntityChunk.chunk_id).where(
+                    col(GraphEntityChunk.entity_id).in_(batch)
+                )
+            ).all():
+                chunks_by_entity[entity_id].append(chunk_id)
+        edges: dict[tuple[ChunkId, ChunkId], tuple[float, int]] = {}
+        for relation in relations:
+            source_chunks = chunks_by_entity.get(relation.source_id, [])
+            target_chunks = chunks_by_entity.get(relation.target_id, [])
+            degree = len(source_chunks) + len(target_chunks)
+            for source_chunk_id in source_chunks[: graph_config.max_chunks_per_entity]:
+                for target_chunk_id in target_chunks[: graph_config.max_chunks_per_entity]:
+                    if source_chunk_id == target_chunk_id:
+                        continue
+                    for key in (
+                        (source_chunk_id, target_chunk_id),
+                        (target_chunk_id, source_chunk_id),
+                    ):
+                        weight, stored_degree = edges.get(key, (0.0, 0))
+                        edges[key] = (weight + relation.weight, max(stored_degree, degree))
+        for (source_chunk_id, target_chunk_id), (weight, degree) in edges.items():
+            session.add(
+                GraphChunkRelation(
+                    source_chunk_id=source_chunk_id,
+                    target_chunk_id=target_chunk_id,
+                    weight=weight,
+                    degree=degree,
+                )
+            )
+        session.commit()
+    return len(edges)
 
 
 # ---------------------------------------------------------------------------
@@ -705,9 +959,7 @@ def _live_chunk_ids(
     """
     if not chunk_ids:
         return []
-    condition = build_metadata_filter_condition(
-        Chunk.metadata_, metadata_filter, dialect=dialect
-    )
+    condition = build_metadata_filter_condition(Chunk.metadata_, metadata_filter, dialect=dialect)
     statement = select(Chunk.id).where(col(Chunk.id).in_(list(chunk_ids)))
     if condition is not None:
         statement = statement.where(condition)
@@ -715,22 +967,125 @@ def _live_chunk_ids(
     return [chunk_id for chunk_id in chunk_ids if chunk_id in allowed]
 
 
-def graph_search(
+def extract_query_entities(
+    query: str,
+    entities: Sequence[tuple[GraphEntityId, str]],
+    *,
+    config: RAGLiteConfig,
+) -> list[GraphEntityId]:
+    """Extract the query's entities with the configured extractor and match them by title.
+
+    This is WeKnora's `PluginExtractEntity`: the question, not the corpus, is what decides which
+    entities seed the search. It costs one extractor call per query, which is why
+    `GraphConfig.query_extraction` is off by default and the lexical matcher covers the common
+    case. An extractor failure degrades to no additional seeds rather than failing the query.
+    """
+    graph_config = config.graph
+    try:
+        extraction = resolve_entity_extractor(graph_config, config).extract(query)
+    except Exception as error:  # noqa: BLE001
+        warnings.warn(f"Query entity extraction failed: {error}", stacklevel=2)
+        return []
+    id_by_title = {
+        normalize_entity_title(title).casefold(): entity_id for entity_id, title in entities
+    }
+    seed_ids: list[GraphEntityId] = []
+    for entity in extraction.entities:
+        entity_id = id_by_title.get(normalize_entity_title(entity.title).casefold())
+        if entity_id is not None and entity_id not in seed_ids:
+            seed_ids.append(entity_id)
+    return seed_ids[: graph_config.seed_entity_limit]
+
+
+def _chunk_neighbors(
+    session: Session, chunk_ids: Sequence[ChunkId]
+) -> dict[ChunkId, list[tuple[ChunkId, float]]]:
+    """Return the chunk-graph neighbours of `chunk_ids` with their normalised edge weights."""
+    neighbors: defaultdict[ChunkId, list[tuple[ChunkId, float]]] = defaultdict(list)
+    if not chunk_ids:
+        return {}
+    for batch in _batched(list(chunk_ids)):
+        edges = session.exec(
+            select(
+                GraphChunkRelation.source_chunk_id,
+                GraphChunkRelation.target_chunk_id,
+                GraphChunkRelation.weight,
+            ).where(col(GraphChunkRelation.source_chunk_id).in_(batch))
+        ).all()
+        for source_chunk_id, target_chunk_id, weight in edges:
+            # Edges carry the sum of the relation weights that produced them, so a neighbour's
+            # pull is the edge's share of the strongest possible edge.
+            neighbors[source_chunk_id].append((target_chunk_id, min(weight / 10.0, 1.0)))
+    return dict(neighbors)
+
+
+def _expand_chunk_neighbors(
+    chunk_scores: dict[ChunkId, float],
+    session: Session,
+    graph_config: GraphConfig,
+) -> dict[ChunkId, float]:
+    """Expand the scored chunks over the chunk graph, decaying the score per hop.
+
+    This is what the projection buys: a chunk that only mentions a related entity is reachable
+    even though no seed entity points at it. Scores are merged with `max`, so a chunk that is
+    both directly seeded and reachable is never demoted by the decayed path.
+    """
+    scores = dict(chunk_scores)
+    frontier = list(scores)
+    for hop in range(max(0, graph_config.chunk_neighbor_hops)):
+        if not frontier:
+            break
+        neighbors = _chunk_neighbors(session, frontier)
+        decay = graph_config.chunk_neighbor_weight ** (hop + 1)
+        next_frontier: list[ChunkId] = []
+        for chunk_id in frontier:
+            for neighbor_id, edge_weight in neighbors.get(chunk_id, []):
+                candidate = scores[chunk_id] * decay * edge_weight
+                if candidate <= 0:
+                    continue
+                if candidate > scores.get(neighbor_id, 0.0):
+                    scores[neighbor_id] = candidate
+                    next_frontier.append(neighbor_id)
+        frontier = next_frontier
+    return scores
+
+
+def graph_search(  # noqa: C901
     query: str,
     *,
     num_results: int = 3,
     metadata_filter: MetadataFilter | None = None,
+    exclude_chunk_ids: Sequence[ChunkId] | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Rank chunks by their graph proximity to the entities mentioned in the query.
 
-    The query is matched lexically against the stored entity titles (no model call), the matched
-    entities are expanded over the relations for `neighbor_hops` hops, and the chunks linked to the
-    resulting weighted entity set are ranked by accumulated weight. The ranking is meant to be
-    fused with the vector and keyword rankings by `reciprocal_rank_fusion`, before reranking.
+    The query is matched against the stored entity titles — lexically by default, and with the
+    extractor as well when `GraphConfig.query_extraction` is set — the matched entities are
+    expanded over the relations for `neighbor_hops` hops, and the chunks linked to the resulting
+    weighted entity set are scored. Those chunks are then expanded over the chunk graph for
+    `chunk_neighbor_hops` hops. The ranking is meant to be fused with the vector and keyword
+    rankings by `reciprocal_rank_fusion`, before reranking.
 
-    Returns an empty result when the graph is disabled or when the query matches no entity, so the
-    caller can treat it as a no-op.
+    Parameters
+    ----------
+    query
+        The question to rank chunks for.
+    num_results
+        The maximum number of chunks to return.
+    metadata_filter
+        An optional metadata filter the returned chunks must satisfy.
+    exclude_chunk_ids
+        Chunks to drop from the ranking, WeKnora's `filterSeenChunk`: the chunks the vector and
+        keyword paths already found, so the graph only contributes what they missed.
+    config
+        The RAGLite config to use.
+
+    Returns
+    -------
+    tuple
+        The ranked chunk ids and their scores. Both are empty when the graph is disabled or when
+        the query matches no entity, so the caller can treat it as a no-op.
     """
     config = config or RAGLiteConfig()
     graph_config = config.graph
@@ -742,11 +1097,15 @@ def graph_search(
         if not entities:
             return [], []
         seed_ids = match_seed_entities(query, entities, graph_config)
+        if graph_config.query_extraction:
+            seed_ids = list(
+                dict.fromkeys(seed_ids + extract_query_entities(query, entities, config=config))
+            )
         if not seed_ids:
             return [], []
         seed_ids = seed_ids[: graph_config.seed_entity_limit]
         # Expand the seed set over the relations, decaying the weight per hop.
-        entity_weights: dict[GraphEntityId, float] = {entity_id: 1.0 for entity_id in seed_ids}
+        entity_weights: dict[GraphEntityId, float] = dict.fromkeys(seed_ids, 1.0)
         frontier = list(seed_ids)
         for hop in range(max(0, graph_config.neighbor_hops)):
             if not frontier:
@@ -778,11 +1137,161 @@ def graph_search(
                 chunk_scores[chunk_id] += entity_weights[entity_id]
         if not chunk_scores:
             return [], []
-        ordered = sorted(chunk_scores, key=lambda chunk_id: (-chunk_scores[chunk_id], chunk_id))
+        # Walk the chunk graph, then drop what the other paths already found.
+        scores = (
+            _expand_chunk_neighbors(dict(chunk_scores), session, graph_config)
+            if graph_config.chunk_neighbor_hops
+            else dict(chunk_scores)
+        )
+        excluded = set(exclude_chunk_ids or ())
+        ordered = [
+            chunk_id
+            for chunk_id in sorted(scores, key=lambda c: (-scores[c], c))
+            if chunk_id not in excluded
+        ]
         ordered = _live_chunk_ids(
             session, ordered[:GRAPH_CANDIDATE_POOL], metadata_filter, dialect=dialect
         )[:num_results]
-    return ordered, [chunk_scores[chunk_id] for chunk_id in ordered]
+    return ordered, [scores[chunk_id] for chunk_id in ordered]
+
+
+@dataclass(frozen=True)
+class GraphEntityView:
+    """An entity as returned by `query_knowledge_graph`."""
+
+    title: str
+    entity_type: str
+    description: str
+    chunk_ids: tuple[ChunkId, ...] = ()
+
+
+@dataclass(frozen=True)
+class GraphRelationView:
+    """A relation as returned by `query_knowledge_graph`."""
+
+    source: str
+    target: str
+    description: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class GraphQueryResult:
+    """A subgraph around the entities mentioned in a query.
+
+    This is RAGLite's counterpart of WeKnora's `query_knowledge_graph` agent tool: the entities
+    the query matched, the relations between them and their neighbours, and the chunks those
+    entities were extracted from. It is meant for an agent that wants to explore the graph, or for
+    a frontend that wants to draw it, not for the retrieval path itself.
+    """
+
+    query: str
+    entities: tuple[GraphEntityView, ...] = ()
+    relations: tuple[GraphRelationView, ...] = ()
+    chunk_ids: tuple[ChunkId, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def query_knowledge_graph(  # noqa: C901
+    query: str,
+    *,
+    max_entities: int = 8,
+    neighbor_hops: int = 1,
+    config: RAGLiteConfig | None = None,
+) -> GraphQueryResult:
+    """Return the subgraph around the entities mentioned in `query`.
+
+    The query is matched against the stored entity titles lexically (and with the extractor when
+    `GraphConfig.query_extraction` is set), the matched entities are expanded for `neighbor_hops`
+    hops, and the entities, the relations among them, and the chunks they were extracted from are
+    returned. An unmatched query yields an empty result rather than an error.
+    """
+    config = config or RAGLiteConfig()
+    graph_config = config.graph
+    with Session(create_database_engine(config)) as session:
+        rows = list(session.exec(select(GraphEntity)).all())
+        if not rows:
+            return GraphQueryResult(query=query)
+        entities = [(entity.id, entity.title) for entity in rows]
+        seed_ids = match_seed_entities(query, entities, graph_config)
+        if graph_config.query_extraction:
+            seed_ids = list(
+                dict.fromkeys(seed_ids + extract_query_entities(query, entities, config=config))
+            )
+        seed_ids = seed_ids[:max_entities]
+        if not seed_ids:
+            return GraphQueryResult(query=query)
+        entity_weights: dict[GraphEntityId, float] = dict.fromkeys(seed_ids, 1.0)
+        frontier = list(seed_ids)
+        for hop in range(max(0, neighbor_hops)):
+            if not frontier:
+                break
+            relations: list[GraphRelation] = []
+            for batch in _batched(frontier):
+                relations.extend(
+                    session.exec(
+                        select(GraphRelation).where(col(GraphRelation.source_id).in_(batch))
+                    ).all()
+                )
+            decay = graph_config.neighbor_weight ** (hop + 1)
+            next_frontier: list[GraphEntityId] = []
+            for relation in relations:
+                if relation.target_id in entity_weights or decay <= 0:
+                    continue
+                entity_weights[relation.target_id] = decay
+                next_frontier.append(relation.target_id)
+            frontier = next_frontier
+        selected = list(entity_weights)
+        by_id: dict[GraphEntityId, GraphEntity] = {
+            entity.id: entity for entity in rows if entity.id in entity_weights
+        }
+        chunks_by_entity: defaultdict[GraphEntityId, list[ChunkId]] = defaultdict(list)
+        for batch in _batched(selected):
+            for entity_id, chunk_id in session.exec(
+                select(GraphEntityChunk.entity_id, GraphEntityChunk.chunk_id).where(
+                    col(GraphEntityChunk.entity_id).in_(batch)
+                )
+            ).all():
+                chunks_by_entity[entity_id].append(chunk_id)
+        stored_relations = [
+            relation
+            for relation in session.exec(select(GraphRelation)).all()
+            if relation.source_id in entity_weights and relation.target_id in entity_weights
+        ]
+        title_by_id = {entity.id: entity.title for entity in rows}
+        entity_views = tuple(
+            GraphEntityView(
+                title=by_id[entity_id].title,
+                entity_type=by_id[entity_id].entity_type,
+                description=by_id[entity_id].description,
+                chunk_ids=tuple(sorted(chunks_by_entity.get(entity_id, []))),
+            )
+            for entity_id in selected
+            if entity_id in by_id
+        )
+        relation_views = tuple(
+            GraphRelationView(
+                source=title_by_id.get(relation.source_id, ""),
+                target=title_by_id.get(relation.target_id, ""),
+                description=relation.description,
+                weight=relation.weight,
+            )
+            for relation in stored_relations
+        )
+        chunk_ids = tuple(
+            dict.fromkeys(
+                chunk_id
+                for entity_id in selected
+                for chunk_id in chunks_by_entity.get(entity_id, [])
+            )
+        )
+    return GraphQueryResult(
+        query=query,
+        entities=entity_views,
+        relations=relation_views,
+        chunk_ids=chunk_ids,
+        metadata={"seeds": len(seed_ids), "entities": len(entity_views)},
+    )
 
 
 def graph_stats(*, config: RAGLiteConfig | None = None) -> dict[str, int]:
@@ -798,6 +1307,9 @@ def graph_stats(*, config: RAGLiteConfig | None = None) -> dict[str, int]:
             "relations": session.exec(select(func.count(col(GraphRelation.source_id)))).one(),
             "entity_chunk_links": session.exec(
                 select(func.count(col(GraphEntityChunk.chunk_id)))
+            ).one(),
+            "chunk_relations": session.exec(
+                select(func.count(col(GraphChunkRelation.source_chunk_id)))
             ).one(),
             "chunks_indexed": session.exec(select(func.count(col(GraphChunk.chunk_id)))).one(),
         }

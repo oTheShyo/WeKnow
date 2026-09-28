@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
 
 from raglite._config import MistralOCRConfig, MultimodalConfig, RAGLiteConfig
+from raglite._parsers import MISTRAL_ENGINE, MULTIMODAL_ENGINE, parse_document
 
 logger = logging.getLogger(__name__)
 
@@ -199,31 +199,26 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
     return pages_md
 
 
-def _default_document_to_markdown(doc_path: Path) -> str:
-    """Convert any document to GitHub Flavored Markdown using pdftext/pandoc."""
-    # Convert the file's content to GitHub Flavored Markdown.
-    if doc_path.suffix == ".pdf":
-        # Parse the PDF with pdftext and convert it to Markdown.
-        pages = dictionary_output(doc_path, sort=True, keep_chars=False)
-        doc = "\n\n".join(parsed_pdf_to_markdown(pages))
-    elif doc_path.suffix in (".md", ".txt"):
-        # Read the Markdown file.
-        doc = doc_path.read_text()
-    else:
-        try:
-            # Use pandoc for everything else.
-            import pypandoc
+def _preferred_parser_engine(doc_path: Path, config: RAGLiteConfig) -> str | None:
+    """Return the parser engine implied by the config and the configured document processor.
 
-            doc = pypandoc.convert_file(doc_path, to="gfm")
-        except ModuleNotFoundError as error:
-            error_message = (
-                "To convert files to Markdown with pandoc, please install the `pandoc` extra."
-            )
-            raise ModuleNotFoundError(error_message) from error
-        except RuntimeError:
-            # File format not supported, fall back to reading the text.
-            doc = doc_path.read_text()
-    return doc
+    `None` means "let the registry choose", which resolves to the builtin engine. The multimodal
+    and Mistral engines only cover the file types they actually support: for anything else the
+    registry falls back to the builtin engine, so a PDF still parses with pdftext when a
+    multimodal processor is configured but the file is not a scan.
+    """
+    from raglite._mistral_ocr import SUPPORTED_EXTENSIONS
+    from raglite._multimodal import is_multimodal_document
+
+    if config.parser_engine:
+        return config.parser_engine
+    if isinstance(config.document_processor, MultimodalConfig) and is_multimodal_document(doc_path):
+        return MULTIMODAL_ENGINE
+    if isinstance(config.document_processor, MistralOCRConfig) and (
+        doc_path.suffix.lower() in SUPPORTED_EXTENSIONS
+    ):
+        return MISTRAL_ENGINE
+    return None
 
 
 def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None) -> str:
@@ -236,7 +231,9 @@ def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None)
     config
         Optional RAGLite configuration. If document_processor is set to a
         MultimodalConfig, runs the OCR + VLM pipeline over images and PDFs. If it is set to a
-        MistralOCRConfig, uses MistralOCR instead of the default processor.
+        MistralOCRConfig, uses MistralOCR instead of the default processor. `parser_engine`
+        overrides the parser engine for every format. Parsing does not need a config: only the
+        multimodal and Mistral engines do.
 
     Returns
     -------
@@ -248,39 +245,14 @@ def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None)
     ValueError
         If the document is an image and no multimodal document processor is configured.
     """
-    config = config or RAGLiteConfig()
-
-    if isinstance(config.document_processor, MultimodalConfig):
-        # Lazy import to avoid pulling in the multimodal stack when it is not used.
-        from raglite._multimodal import is_multimodal_document, multimodal_to_markdown
-
-        if is_multimodal_document(doc_path):
-            return multimodal_to_markdown(doc_path, processor_config=config.document_processor)
+    engine = None if config is None else _preferred_parser_engine(doc_path, config)
+    if engine is None and config is not None and config.document_processor is not None:
         logger.debug(
-            "The multimodal processor does not support file type: %s\n"
+            "The configured document processor does not support file type: %s\n"
             "Falling back to the default processor.",
             doc_path,
         )
-
-    if isinstance(config.document_processor, MistralOCRConfig):
-        # Lazy import to avoid requiring mistralai when not using MistralOCR.
-        from raglite._mistral_ocr import SUPPORTED_EXTENSIONS, mistral_ocr_to_markdown
-
-        if doc_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            return mistral_ocr_to_markdown(doc_path, processor_config=config.document_processor)
-        logger.debug(
-            "Mistral does not support file type: %s\nFalling back to default processor.", doc_path
-        )
-
-    # Guard against silently decoding binary image data as text.
-    from raglite._multimodal import IMAGE_EXTENSIONS
-
-    if doc_path.suffix.lower() in IMAGE_EXTENSIONS:
-        error_message = (
-            f"To extract content from an image ({doc_path.name}), configure a multimodal or OCR "
-            "document processor, e.g. "
-            "`RAGLiteConfig(document_processor=MultimodalConfig(vlm='openai/gpt-4o-mini'))`."
-        )
-        raise ValueError(error_message)
-
-    return _default_document_to_markdown(doc_path)
+    # The registry picks the parser, verifies that its engine is installed, and falls back to the
+    # builtin engine otherwise. The builtin image parser is what guards against silently decoding
+    # binary image data as text: it raises instead of returning garbage.
+    return parse_document(doc_path, engine=engine, config=config).content

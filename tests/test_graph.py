@@ -81,9 +81,11 @@ def _entity(title: str) -> ExtractedEntity:
     return ExtractedEntity(title=title, type="person", description=f"about {title}")
 
 
-def _relation(source: str, target: str) -> ExtractedRelation:
-    """A minimal extracted relation."""
-    return ExtractedRelation(source=source, target=target, description=f"{source} -> {target}")
+def _relation(source: str, target: str, strength: float = 1.0) -> ExtractedRelation:
+    """A minimal extracted relation, with the strength the extractor stated for it."""
+    return ExtractedRelation(
+        source=source, target=target, description=f"{source} -> {target}", strength=strength
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -259,9 +261,7 @@ def test_build_graph_aggregates_entities_and_relations(
     assert graph_stats(config=graph_config)["entity_chunk_links"] == 5  # A:2, B:2, C:1
 
 
-def test_build_graph_is_incremental(
-    graph_config: RAGLiteConfig, seeded: dict[str, str]
-) -> None:
+def test_build_graph_is_incremental(graph_config: RAGLiteConfig, seeded: dict[str, str]) -> None:
     """A second build skips every chunk, because chunk ids are content hashes."""
     build_graph(config=graph_config)
     report = build_graph(config=graph_config)
@@ -334,7 +334,8 @@ def test_build_graph_drops_overlong_and_empty_titles(test_config: RAGLiteConfig)
         }
     )
     config = replace(
-        test_config, graph=GraphConfig(enabled=True, extractor=extractor, max_entity_title_length=50)
+        test_config,
+        graph=GraphConfig(enabled=True, extractor=extractor, max_entity_title_length=50),
     )
     _seed(config, {"a": BODY_A})
     report = build_graph(config=config)
@@ -384,13 +385,12 @@ def test_prune_graph_removes_rows_without_chunks(
     assert stats["relations"] == 1
 
 
-def test_prune_graph_is_idempotent(
-    graph_config: RAGLiteConfig, seeded: dict[str, str]
-) -> None:
+def test_prune_graph_is_idempotent(graph_config: RAGLiteConfig, seeded: dict[str, str]) -> None:
     """A second prune finds nothing to remove."""
     build_graph(config=graph_config)
     assert prune_graph(config=graph_config) == {
         "chunk_links": 0,
+        "chunk_relations": 0,
         "chunks": 0,
         "entities": 0,
         "relations": 0,
@@ -405,6 +405,7 @@ def test_clear_graph(graph_config: RAGLiteConfig, seeded: dict[str, str]) -> Non
         "entities": 0,
         "relations": 0,
         "entity_chunk_links": 0,
+        "chunk_relations": 0,
         "chunks_indexed": 0,
     }
     engine = create_database_engine(graph_config)
@@ -429,7 +430,9 @@ def test_graph_search_matches_seed_entity(
 ) -> None:
     """A query mentioning an entity returns the chunks that entity was extracted from."""
     build_graph(config=graph_config)
-    chunk_ids, scores = graph_search("What did Einstein publish?", num_results=5, config=graph_config)
+    chunk_ids, scores = graph_search(
+        "What did Einstein publish?", num_results=5, config=graph_config
+    )
     assert seeded["a"] in chunk_ids
     assert all(score > 0 for score in scores)
 
@@ -439,15 +442,42 @@ def test_graph_search_expands_neighbours_by_hop(
 ) -> None:
     """One hop reaches a chunk that never mentions the query entity; two hops reach the next one."""
     build_graph(config=graph_config)
-    one_hop = replace(graph_config, graph=replace(graph_config.graph, neighbor_hops=1))
+    # The chunk graph is off here so the assertion isolates the entity hops.
+    one_hop = replace(
+        graph_config, graph=replace(graph_config.graph, neighbor_hops=1, chunk_neighbor_hops=0)
+    )
     chunk_ids, _ = graph_search("Einstein", num_results=5, config=one_hop)
     assert seeded["a"] in chunk_ids  # Directly matched.
     assert seeded["b"] in chunk_ids  # Reached through the field equations.
     assert seeded["c"] not in chunk_ids  # Two hops away.
 
-    two_hops = replace(graph_config, graph=replace(graph_config.graph, neighbor_hops=2))
+    two_hops = replace(
+        graph_config, graph=replace(graph_config.graph, neighbor_hops=2, chunk_neighbor_hops=0)
+    )
     chunk_ids, _ = graph_search("Einstein", num_results=5, config=two_hops)
     assert seeded["c"] in chunk_ids
+
+
+def test_chunk_graph_reaches_a_chunk_no_entity_points_at(
+    graph_config: RAGLiteConfig, seeded: dict[str, str]
+) -> None:
+    """WeKnora's chunk projection: a chunk sharing an entity with a scored chunk is reachable."""
+    build_graph(config=graph_config)
+    # Chunk C only mentions Besso, which is two entity hops from Einstein.
+    without = replace(
+        graph_config, graph=replace(graph_config.graph, neighbor_hops=1, chunk_neighbor_hops=0)
+    )
+    assert seeded["c"] not in graph_search("Einstein", num_results=5, config=without)[0]
+
+    with_projection = replace(
+        graph_config, graph=replace(graph_config.graph, neighbor_hops=1, chunk_neighbor_hops=1)
+    )
+    chunk_ids, scores = graph_search("Einstein", num_results=5, config=with_projection)
+    assert seeded["c"] in chunk_ids
+    # The directly matched chunk still outranks the one reached through the projection.
+    assert chunk_ids.index(seeded["a"]) < chunk_ids.index(seeded["c"])
+    assert scores[chunk_ids.index(seeded["a"])] > scores[chunk_ids.index(seeded["c"])]
+    assert graph_stats(config=graph_config)["chunk_relations"] > 0
 
 
 def test_graph_search_prefers_the_more_specific_entity(
@@ -456,7 +486,9 @@ def test_graph_search_prefers_the_more_specific_entity(
     """A longer matched title is a better seed than a shorter one contained in the query."""
     build_graph(config=graph_config)
     # "Field equations" is longer than "Einstein" and is the more specific match here.
-    chunk_ids, _ = graph_search("Who worked on the field equations?", num_results=5, config=graph_config)
+    chunk_ids, _ = graph_search(
+        "Who worked on the field equations?", num_results=5, config=graph_config
+    )
     assert seeded["a"] in chunk_ids
     assert seeded["b"] in chunk_ids
 
@@ -469,9 +501,7 @@ def test_graph_search_returns_nothing_for_unrelated_query(
     assert graph_search("How do I bake sourdough bread?", config=graph_config) == ([], [])
 
 
-def test_graph_search_empty_graph(
-    graph_config: RAGLiteConfig, seeded: dict[str, str]
-) -> None:
+def test_graph_search_empty_graph(graph_config: RAGLiteConfig, seeded: dict[str, str]) -> None:
     """With nothing extracted there is nothing to rank."""
     assert graph_search("Einstein", config=graph_config) == ([], [])
 
@@ -613,12 +643,8 @@ def test_hybrid_search_does_not_consult_the_graph_when_disabled(
     """A disabled graph never runs a graph search."""
     import raglite._search as search_module
 
-    monkeypatch.setattr(
-        search_module, "vector_search", lambda query, **kwargs: (["v1"], [1.0])
-    )
-    monkeypatch.setattr(
-        search_module, "keyword_search", lambda query, **kwargs: (["k1"], [1.0])
-    )
+    monkeypatch.setattr(search_module, "vector_search", lambda query, **kwargs: (["v1"], [1.0]))
+    monkeypatch.setattr(search_module, "keyword_search", lambda query, **kwargs: (["k1"], [1.0]))
 
     def unexpected(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("graph_search must not run when the graph is disabled")
@@ -686,3 +712,225 @@ def test_sync_documents_skips_the_graph_when_disabled(
     )
     assert report["inserted"] == ["doc-new"]
     assert "graph" not in report
+
+
+# ---------------------------------------------------------------------------
+# WeKnora alignment: edge weighting, the chunk projection, and the query side.
+# ---------------------------------------------------------------------------
+
+
+def test_pointwise_mutual_information_matches_the_definition() -> None:
+    """PMI is `log2(P(x, y) / (P(x) * P(y)))`, clamped at zero."""
+    from raglite._graph import pointwise_mutual_information
+
+    # Together a quarter of the time, each a quarter of the time: four times more than chance,
+    # which is two bits of mutual information.
+    assert pointwise_mutual_information(0.25, 0.25, 0.25) == pytest.approx(2.0)
+    # Exactly chance: no mutual information.
+    assert pointwise_mutual_information(0.0625, 0.25, 0.25) == pytest.approx(0.0)
+    # Less than chance: clamped, never negative.
+    assert pointwise_mutual_information(0.01, 0.25, 0.25) == 0.0
+    # An entity that never occurs carries no information.
+    assert pointwise_mutual_information(0.0, 0.25, 0.0) == 0.0
+
+
+def test_recompute_relation_weights_scales_pmi_and_strength(test_config: RAGLiteConfig) -> None:
+    """The edge weight combines normalised PMI and the extractor's strength into 1-10."""
+    from raglite._database import GraphRelation
+    from raglite._graph import recompute_relation_weights
+
+    extractor = ScriptedExtractor(
+        {
+            MARKER_A: GraphExtraction(
+                entities=[_entity("Einstein"), _entity("Field equations")],
+                relations=[_relation("Einstein", "Field equations", strength=10.0)],
+            ),
+            MARKER_B: GraphExtraction(
+                entities=[_entity("Field equations"), _entity("Michele Besso")],
+                relations=[_relation("Field equations", "Michele Besso", strength=1.0)],
+            ),
+            MARKER_C: GraphExtraction(entities=[_entity("Michele Besso")]),
+        }
+    )
+    config = replace(test_config, graph=GraphConfig(enabled=True, extractor=extractor))
+    _seed(config, {"a": BODY_A, "b": BODY_B, "c": BODY_C})
+    report = build_graph(config=config)
+    assert report["relations_scored"] == 2
+
+    with Session(create_database_engine(config)) as session:
+        relations = {
+            (relation.source_id, relation.target_id): relation
+            for relation in session.exec(select(GraphRelation)).all()
+        }
+    einstein = entity_id_for_title("Einstein")
+    field_equations = entity_id_for_title("Field equations")
+    besso = entity_id_for_title("Michele Besso")
+    strong = relations[(einstein, field_equations)]
+    weak = relations[(field_equations, besso)]
+    # Both land in the 1-10 range...
+    assert 1.0 <= strong.weight <= 10.0
+    assert 1.0 <= weak.weight <= 10.0
+    # ...and the relation with the higher strength and equal PMI wins.
+    assert strong.weight > weak.weight
+    assert strong.strength == pytest.approx(1.0)
+    assert weak.strength == pytest.approx(0.1)
+    # Re-running is idempotent: the weights are recomputed from the graph, not accumulated.
+    weights_before = {key: relation.weight for key, relation in relations.items()}
+    recompute_relation_weights(config=config)
+    with Session(create_database_engine(config)) as session:
+        after = {
+            (relation.source_id, relation.target_id): relation.weight
+            for relation in session.exec(select(GraphRelation)).all()
+        }
+    assert after == weights_before
+
+
+def test_relation_strength_is_a_mean_over_the_chunks(test_config: RAGLiteConfig) -> None:
+    """An incremental build folds a new mention into the mean strength instead of replacing it."""
+    from raglite._database import GraphRelation
+
+    extractor = ScriptedExtractor(
+        {
+            MARKER_A: GraphExtraction(
+                entities=[_entity("Einstein"), _entity("Relativity")],
+                relations=[_relation("Einstein", "Relativity", strength=10.0)],
+            ),
+            MARKER_B: GraphExtraction(
+                entities=[_entity("Relativity"), _entity("Einstein")],
+                relations=[_relation("Einstein", "Relativity", strength=1.0)],
+            ),
+        }
+    )
+    config = replace(test_config, graph=GraphConfig(enabled=True, extractor=extractor))
+    _seed(config, {"a": BODY_A, "b": BODY_B})
+    build_graph(config=config)
+    with Session(create_database_engine(config)) as session:
+        relation = session.exec(select(GraphRelation)).one()
+    assert relation.observations == 2
+    assert relation.strength == pytest.approx(0.55)  # (1.0 + 0.1) / 2
+
+
+def test_extraction_prompt_carries_the_configured_types_and_examples() -> None:
+    """WeKnora's `ExtractConfig` constraints are appended to the prompt when they are set."""
+    from raglite._graph import build_extraction_prompt
+
+    plain = build_extraction_prompt(GraphConfig())
+    assert "knowledge graph extractor" in plain
+    constrained = build_extraction_prompt(
+        GraphConfig(
+            entity_types=("person", "theory"),
+            relation_types=("authored-by",),
+            extraction_examples="Example: Einstein -> authored-by -> relativity.",
+        )
+    )
+    assert "person, theory" in constrained
+    assert "authored-by" in constrained
+    assert constrained.endswith("Example: Einstein -> authored-by -> relativity.")
+    assert plain == GraphConfig().extraction_prompt
+
+
+def test_query_extraction_seeds_entities_the_lexical_matcher_misses(
+    test_config: RAGLiteConfig,
+) -> None:
+    """Query-time extraction finds an entity the question never spells out."""
+
+    @dataclass
+    class QueryAwareExtractor:
+        """An extractor that reads the question's entities when it is given the question."""
+
+        def extract(self, text: str) -> GraphExtraction:
+            if "annus mirabilis" in text:
+                return GraphExtraction(entities=[_entity("Michele Besso")])
+            if MARKER_A in text:
+                return GraphExtraction(entities=[_entity("Einstein")])
+            return GraphExtraction(entities=[_entity("Michele Besso")])
+
+    config = replace(
+        test_config,
+        graph=GraphConfig(enabled=True, extractor=QueryAwareExtractor()),
+    )
+    chunk_ids = _seed(config, {"a": BODY_A, "b": BODY_B})
+    build_graph(config=config)
+    # "Who wrote the annus mirabilis papers?" mentions no entity title, so lexical matching finds
+    # nothing until query extraction is turned on.
+    assert graph_search("Who wrote the annus mirabilis papers?", config=config)[0] == []
+
+    with_extraction = replace(config, graph=replace(config.graph, query_extraction=True))
+    assert graph_search("Who wrote the annus mirabilis papers?", config=with_extraction)[0] == [
+        chunk_ids["b"]
+    ]
+
+
+def test_graph_search_excludes_the_chunks_the_other_paths_found(
+    graph_config: RAGLiteConfig, seeded: dict[str, str]
+) -> None:
+    """`exclude_chunk_ids` is WeKnora's `filterSeenChunk`: only new chunks are contributed."""
+    build_graph(config=graph_config)
+    full, _ = graph_search("Einstein", num_results=5, config=graph_config)
+    assert seeded["a"] in full
+    filtered, _ = graph_search(
+        "Einstein", num_results=5, exclude_chunk_ids=[seeded["a"]], config=graph_config
+    )
+    assert seeded["a"] not in filtered
+    assert seeded["b"] in filtered
+
+
+def test_hybrid_search_deduplicates_when_configured(
+    graph_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`deduplicate_seen_chunks` forwards what the other paths found to the graph search."""
+    import raglite._search as search_module
+
+    seen: list[Any] = []
+
+    def record_graph_search(query: str, **kwargs: Any) -> tuple[list[str], list[float]]:
+        seen.append(kwargs.get("exclude_chunk_ids"))
+        return (["g1"], [1.0])
+
+    monkeypatch.setattr(search_module, "vector_search", lambda query, **kwargs: (["v1"], [1.0]))
+    monkeypatch.setattr(search_module, "keyword_search", lambda query, **kwargs: (["k1"], [1.0]))
+    monkeypatch.setattr(search_module, "graph_search", record_graph_search)
+    search_module.hybrid_search("q", config=graph_config)
+    assert seen == [None]  # Off by default: RRF rewards agreement between paths.
+
+    deduplicating = replace(
+        graph_config, graph=replace(graph_config.graph, deduplicate_seen_chunks=True)
+    )
+    search_module.hybrid_search("q", config=deduplicating)
+    assert seen[-1] == ["v1", "k1"]
+
+
+def test_query_knowledge_graph_returns_the_neighbourhood(
+    graph_config: RAGLiteConfig, seeded: dict[str, str]
+) -> None:
+    """The agent-facing tool returns the entities, their relations, and their chunks."""
+    from raglite._graph import query_knowledge_graph
+
+    build_graph(config=graph_config)
+    result = query_knowledge_graph("What did Einstein publish?", config=graph_config)
+    titles = {entity.title for entity in result.entities}
+    assert "Einstein" in titles
+    assert "Field equations" in titles  # One hop away.
+    assert "Michele Besso" not in titles  # Two hops away.
+    assert ("Einstein", "Field equations") in {
+        (relation.source, relation.target) for relation in result.relations
+    }
+    assert seeded["a"] in result.chunk_ids
+    assert result.metadata["seeds"] >= 1
+    # An unrelated query yields an empty subgraph rather than an error.
+    assert query_knowledge_graph("How do I bake bread?", config=graph_config).entities == ()
+
+
+def test_query_knowledge_graph_is_a_two_hop_neighbourhood_on_request(
+    graph_config: RAGLiteConfig, seeded: dict[str, str]
+) -> None:
+    """`neighbor_hops` widens the returned subgraph."""
+    from raglite._graph import query_knowledge_graph
+
+    build_graph(config=graph_config)
+    result = query_knowledge_graph("Einstein", neighbor_hops=2, config=graph_config)
+    assert {entity.title for entity in result.entities} == {
+        "Einstein",
+        "Field equations",
+        "Michele Besso",
+    }

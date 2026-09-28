@@ -11,9 +11,9 @@
 | 维度 | WeKnora | RAGLite | 谁强 |
 |---|---|---|---|
 | 部署形态 | Docker/K8s 服务化（依赖 PG+Redis） | pip 装完即用，DuckDB 单文件 | **RAGLite**（嵌入式零依赖） |
-| 文档解析 | 13 格式，三引擎互补（anydoc Rust + DocReader OCR + PaddleOCR-VL） | PDF/MD（pdftext+Pandoc），纯文本 | WeKnora |
+| 文档解析 | 13 格式，三引擎互补（anydoc Rust + DocReader OCR + PaddleOCR-VL） | ~~PDF/MD（pdftext+Pandoc），纯文本~~ → **已对齐：引擎注册表 + builtin 28 类格式 + 4 类可选引擎 + 三级降级回退**（2026-09-29，见 `文档解析与GraphRAG-对齐WeKnora.md`） | 已拉平（RAGLite 且零新增依赖） |
 | 切分 | 父子分块 + 自适应三级切分 | 三层最优化切分（SaT/DP/BIP，有理论依据） | **RAGLite**（更讲究） |
-| 检索 | BM25+Dense+GraphRAG，RRF 归一化修复、意图识别、FAQ 迭代 | BM25+Dense+RRF+FlashRank+agentic 迭代 | 各有侧重 |
+| 检索 | BM25+Dense+GraphRAG，RRF 归一化修复、意图识别、FAQ 迭代 | BM25+Dense+RRF+FlashRank+agentic 迭代 + **图增强第三路**（加权/投影/查询期扩展已对齐 WeKnora，存储走 DuckDB 不依赖 Neo4j） | 各有侧重 |
 | 评估 | Recall + BLEU/ROUGE + Langfuse 全链路追踪 | TREC MRR/Hit/nDCG（检索端更强） | 检索 RAGLite，生成+可观测 WeKnora |
 | 生态 | 8 种向量库、27 家 LLM、10 种 IM 渠道 | PG + DuckDB，litellm | WeKnora（服务化所需） |
 
@@ -28,6 +28,12 @@
 > ✅ **2026-09-28 状态：#1–#6 已全部实现并提交**（git 仓库已建立，每项能力一次 feat 提交，
 > 新增单测 16 + 22 = 38 个全过，mypy 干净）。**#6b（图增强检索）亦已实现并完成三臂 A/B 评测**
 > （+33 单测，自研扩展单测合计 71 个全过），结论为「单跳零退化、关系类净打平」→ 保持默认关闭。
+>
+> ✅ **2026-09-29 追加：#11 文档解析引擎注册表、#12 GraphRAG 机制对齐（六项）也已实现**
+> （+29 单测：19 + 10，自研扩展单测合计 100 个全过，mypy 干净）。**图检索仍默认关闭**——
+> 机制已就位但用真实 LLM 抽取器重跑 A/B 尚未完成，故不写任何效果数字。
+> 详见 `文档解析与GraphRAG-对齐WeKnora.md`。
+>
 > 实现方式：
 > - #1 → `_iterative_search.py`（rerank 置信度阈值触发二次召回，WeKnora 式扩池）
 > - #2 → `_incremental.py`（content-hash 增量同步 + 热更新 + 可选 prune）
@@ -37,6 +43,8 @@
 >   （RapidOCR）回收图内文字 + LiteLLM 视觉模型生成图像描述；双阶段独立降级、多页并发提取、
 >   图像类型启发式标注；两类内容拼入 Markdown 后复用既有三层切分与混合建库**）
 > - #6 → `_eval_generation.py`（零依赖 ROUGE-L + BLEU，CJK 感知分词）
+> - #11 → `_parsers.py`（引擎注册表 + 9 个内置解析器 + 4 个可选引擎；`_markdown.document_to_markdown` 改为走注册表）
+> - #12 → `_graph.py` + `GraphChunkRelation` 表（PMI+强度边权、chunk 图投影、查询期实体抽取、`filterSeenChunk` 去重、`query_knowledge_graph`、`ExtractConfig` 约束注入）
 
 | # | 优化项 | WeKnora 参考机制 | RAGLite 上的实现路径 | 工作量 |
 |---|---|---|---|---|
@@ -47,6 +55,8 @@
 | 5 | **OCR/VLM 多模态** | PaddleOCR-VL 解析器 + 图片 auto-describe caption 独立入索引 | PDF 解析时检测图片区域 → PaddleOCR 提文字 / VLM 生成 caption → 作为独立 chunk 入索引（绑 `image_id` 元数据）。先做 OCR 路径（本地、免费），VLM caption 可选 | ~~3–5 天~~ **已完成** ✅ |
 | 6 | **生成端评估** | Recall + BLEU/ROUGE 端到端评估 | 检索端已有 TREC（MRR/Hit），补生成端：`rouge-score` 库算 ROUGE-L、`nltk` BLEU，用自建 QA 集（gen_bench.py 已内置 6 问可扩到 50 问） | 1 天 ⭐ |
 | 6b | **图增强检索（GraphRAG 思路）** | WeKnora 自研 GraphRAG（**强依赖 Neo4j + APOC，默认关闭**） | **改参考 LightRAG**：实体/关系抽到既有 DuckDB 表（零新依赖、零新服务），产出第三路 chunk 排序并入 RRF（重排前融合，与 WeKnora 时机一致）；可插拔抽取器 + 按 chunk 降级 + 空排名零贡献。**已完成并做了三臂 A/B：单跳类零退化、关系类净打平 → 默认关闭、不写效果数字**。见 `图增强检索-AB评测.md` | ~~3–5 天~~ **已完成** ✅ |
+| 11 | **文档解析引擎注册表** | `ParserEngineRegistry`：`(engine, file_type) → parser`，三引擎互补 + builtin 回退，统一 `Document{content, images}` | `_parsers.py`（1129 行）：把 `_markdown` 里按后缀的 if-else 分支换成注册表；builtin 覆盖 **28 类**（docx/pptx/xlsx/epub 用标准库 `zipfile`+`ElementTree` 解 OOXML/OCF 容器，**零新增依赖**），可选 pandoc / MarkItDown / multimodal OCR / Mistral OCR 四引擎；三级降级（无此类型 / 未安装 / 运行时抛 `ParserFallbackError`）均回退 builtin 并 warning；`parser_report()` 可打印"缺什么包"。**+19 单测全过**。详见 `文档解析与GraphRAG-对齐WeKnora.md` | ~~2–3 天~~ **已完成** ✅ |
+| 12 | **GraphRAG 机制对齐（六项）** | `graph.go` 的 `0.6·PMI + 0.4·Strength` 边权（缩放 1–10）、`buildChunkGraph` 实体图→chunk 图投影、`search_entity.go` 的 `PluginExtractEntity` + `filterSeenChunk`、`query_knowledge_graph` agent 工具、`ExtractConfig` 类型/示例注入 | `_graph.py` + `GraphChunkRelation` 表：① `recompute_relation_weights()`；② `build_chunk_relations()` + 检索期 `_expand_chunk_neighbors()` 跳数扩散；③ `extract_query_entities()`；④ `graph_search(exclude_chunk_ids=...)` + `deduplicate_seen_chunks`；⑤ `query_knowledge_graph()`；⑥ `build_extraction_prompt()` 注入类型与示例。**存储仍走 DuckDB（不引入 Neo4j）**，仍默认关闭。**+10 单测全过**。详见 `文档解析与GraphRAG-对齐WeKnora.md` | ~~2–3 天~~ **已完成** ✅ |
 
 ### T1：工程正确性修复（我们实测发现的，WeKnora 也有对应实践）
 
@@ -86,3 +96,8 @@
 > 📌 **全部已完成（2026-09-28）**：#1–#6 均已实现并各自独立提交，38 个单测通过。
 > 唯一仍未取数的部分是多模态链路的**端到端效果**（OCR 字符准确率、图文问答准确率、含 VLM 的
 > P50 延迟）——需要先装 OCR 引擎（`pip install 'raglite[multimodal]'`）并提供视觉模型端点。
+>
+> 📌 **2026-09-29 追加**：#11 文档解析引擎注册表、#12 GraphRAG 六项机制对齐也已实现
+> （+29 单测，自研扩展单测合计 100 个全过，mypy 干净）。**仍未取数的部分**：
+> ① 多模态端到端效果（同上）；② **用真实 LLM 抽取器重跑图增强 A/B**（阻塞于 LLM 端点），
+> 在此之前 `GraphConfig.enabled` 保持 `False`、简历不写图增强效果数字。

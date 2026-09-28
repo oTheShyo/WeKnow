@@ -104,10 +104,15 @@ DEFAULT_GRAPH_EXTRACTION_PROMPT = (
     "Only extract entities and relations that are explicitly stated in the text.\n"
     "Use each entity's canonical name as written in the text; never invent or translate names.\n"
     "Give every entity a one-sentence description grounded in the text.\n"
-    "Give every relation a short description of how the source entity relates to the target.\n"
+    "Give every relation a short description of how the source entity relates to the target, and\n"
+    "a strength from 1 (mentioned in passing) to 10 (the text is about this relation).\n"
     "Prefer a small number of high-value entities over an exhaustive list.\n"
     "Answer in the same language as the source text."
 )
+
+# The default entity and relation types offered to the extractor when the config declares none.
+DEFAULT_GRAPH_ENTITY_TYPES = ("person", "organization", "location", "concept", "event", "other")
+DEFAULT_GRAPH_RELATION_TYPES = ("is-a", "part-of", "causes", "authored-by", "related-to")
 
 
 @dataclass(frozen=True)
@@ -138,17 +143,44 @@ class GraphConfig:
     extraction_temperature: float = 0.1
     extraction_max_tokens: int = 1024
     extraction_max_workers: int = 4
+    # Few-shot constraints injected into the extraction prompt, WeKnora's `ExtractConfig`: the
+    # entity and relation types the extractor may use, and worked examples. Empty means "let the
+    # model choose", which is the default because an over-constrained schema silently drops the
+    # entities a personal corpus is actually about.
+    entity_types: tuple[str, ...] = ()
+    relation_types: tuple[str, ...] = ()
+    extraction_examples: str = ""
     # Entities whose title is longer than this many characters are dropped (usually a whole
     # sentence rather than a name).
     max_entity_title_length: int = 120
-    # Retrieval: how many seed entities to use, how many hops to expand, and how much weight a
-    # neighbouring entity keeps relative to a directly matched one.
+    # Edge weighting, WeKnora's `graph.go`: the combination of pointwise mutual information (how
+    # much more often two entities co-occur than chance) and the strength the extractor assigned
+    # to the relation, normalised and scaled into the 1-10 range.
+    pmi_weight: float = 0.6
+    strength_weight: float = 0.4
+    weight_scale: float = 9.0
+    # The chunk graph: two chunks that share an entity are linked, which is what lets retrieval
+    # walk from a chunk that mentions the query entity to a chunk that only mentions a related
+    # one. WeKnora's `buildChunkGraph` does the same projection.
+    build_chunk_graph: bool = True
+    # How many chunks an entity may contribute to the projection. A hub entity mentioned by every
+    # chunk would otherwise make the projection quadratic in the corpus size.
+    max_chunks_per_entity: int = 64
+    chunk_neighbor_hops: int = 1
+    chunk_neighbor_weight: float = 0.5
+    # Retrieval: how many seed entities to use, how many hops to expand over the entity relations,
+    # and how much weight a neighbouring entity keeps relative to a directly matched one.
     seed_entity_limit: int = 8
     neighbor_hops: int = 1
     neighbor_weight: float = 0.5
-    # Whether to ask the LLM to extract the question's entities at query time. Off by default
-    # because it costs one extra LLM call per query; the lexical matcher needs no model call.
+    # Whether to ask the extractor for the question's entities at query time. Off by default
+    # because it costs one extractor call per query; the lexical matcher needs no model call. When
+    # enabled, the extracted entities are matched by title and unioned with the lexical matches.
     query_extraction: bool = False
+    # Whether to drop the chunks the vector and keyword paths already found, WeKnora's
+    # `filterSeenChunk`. Off by default: RRF already rewards a chunk that several paths agree on,
+    # and the graph's value here is precisely to add chunks the other paths missed.
+    deduplicate_seen_chunks: bool = False
 
 
 # Lazily load the default search method to avoid circular imports.
@@ -195,6 +227,11 @@ class RAGLiteConfig:
     chunk_max_size: int = 2048  # Max number of characters per chunk.
     # Document processing config. None = default processor.
     document_processor: MistralOCRConfig | MultimodalConfig | None = None
+    # The document parser engine to prefer ("builtin", "pandoc", "markitdown", "multimodal",
+    # "mistral"). None lets the registry pick: the builtin engine, unless a document processor is
+    # configured. An engine that does not support the file type, or whose dependency is missing,
+    # falls back to the builtin engine instead of failing.
+    parser_engine: str | None = None
     # Vector search config.
     vector_search_distance_metric: Literal["cosine", "dot", "l2"] = "cosine"
     vector_search_multivector: bool = True

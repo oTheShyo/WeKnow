@@ -559,7 +559,10 @@ class GraphRelation(SQLModel, table=True):
     """A knowledge graph relation between two entities.
 
     The primary key is the (source, target) pair, so repeated mentions of the same relation
-    aggregate into one edge whose weight records how often it was observed.
+    aggregate into one edge. `weight` is WeKnora's combined weight: pointwise mutual information
+    and the extractor's strength, normalised and scaled into the 1-10 range by
+    `raglite._graph.recompute_relation_weights`. `observations` records how many chunks stated the
+    relation and `strength` is their mean stated strength.
     """
 
     __tablename__ = "graph_relation"
@@ -569,6 +572,30 @@ class GraphRelation(SQLModel, table=True):
     target_id: GraphEntityId = Field(..., primary_key=True)
     description: str = Field(default="")
     weight: float = Field(default=1.0)
+    strength: float = Field(default=1.0)
+    observations: int = Field(default=0)
+
+
+class GraphChunkRelation(SQLModel, table=True):
+    """A chunk-to-chunk edge projected from the entity graph.
+
+    Two chunks that share an entity are linked, with the weight of the relation that connected
+    them and the combined degree of the endpoint entities. This is WeKnora's `ChunkRelation`: the
+    projection that lets retrieval walk from a chunk mentioning the query entity to a chunk that
+    only mentions a related one, without re-deriving the entity graph at query time.
+
+    Edges are stored in both directions, so a single lookup on `source_chunk_id` is enough to walk
+    them. Like the other graph tables this one declares no foreign keys, and
+    `raglite._graph.prune_graph` removes the edges whose chunks are gone.
+    """
+
+    __tablename__ = "graph_chunk_relation"
+
+    # Table columns.
+    source_chunk_id: ChunkId = Field(..., primary_key=True, index=True)
+    target_chunk_id: ChunkId = Field(..., primary_key=True)
+    weight: float = Field(default=1.0)
+    degree: int = Field(default=0)
 
 
 class GraphChunk(SQLModel, table=True):

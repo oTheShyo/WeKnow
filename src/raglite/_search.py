@@ -316,10 +316,19 @@ def hybrid_search(  # noqa: PLR0913
     weights = [vector_search_weight, keyword_search_weight]
     # Add the graph ranking as a third path when the graph extension is enabled.
     if config.graph.enabled:
+        # `deduplicate_seen_chunks` is WeKnora's `filterSeenChunk`: the graph then only contributes
+        # chunks the vector and keyword paths missed. It is off by default, because RRF already
+        # rewards a chunk that several paths agree on.
+        seen_chunk_ids = (
+            list(dict.fromkeys(vs_chunk_ids + ks_chunk_ids))
+            if config.graph.deduplicate_seen_chunks
+            else None
+        )
         gs_chunk_ids, _ = graph_search(
             query,
             num_results=oversample * num_results,
             metadata_filter=metadata_filter,
+            exclude_chunk_ids=seen_chunk_ids,
             config=config,
         )
         rankings.append(gs_chunk_ids)
