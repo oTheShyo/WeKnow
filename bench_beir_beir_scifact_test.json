@@ -1,0 +1,18 @@
+{
+  "dataset": "beir/scifact/test",
+  "documents": 5183,
+  "queries": 300,
+  "qrels": 339,
+  "retriever": "raglite DuckDB FTS (match_bm25), document-level flat index",
+  "num_results": 1000,
+  "scores": {
+    "R@100": 0.9287,
+    "nDCG@100": 0.6972,
+    "nDCG@10": 0.673,
+    "RR@10": 0.6321
+  },
+  "published_bm25_ndcg10": {
+    "BEIR paper": 0.665,
+    "Anserini (flat)": 0.673
+  }
+}

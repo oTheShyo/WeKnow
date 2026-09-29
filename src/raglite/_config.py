@@ -168,6 +168,11 @@ class GraphConfig:
     max_chunks_per_entity: int = 64
     chunk_neighbor_hops: int = 1
     chunk_neighbor_weight: float = 0.5
+    # How many of a chunk's neighbours the query expansion may follow. The projection links every
+    # pair of chunks that share an entity, so a hub entity gives a chunk thousands of neighbours —
+    # on NFCorpus the heaviest chunk has 2,852 — and following all of them costs millions of rows
+    # per query and drags in most of the corpus. Only the heaviest edges are worth following.
+    chunk_neighbor_limit: int = 32
     # Retrieval: how many seed entities to use, how many hops to expand over the entity relations,
     # and how much weight a neighbouring entity keeps relative to a directly matched one.
     seed_entity_limit: int = 8

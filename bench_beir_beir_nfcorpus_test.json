@@ -1,0 +1,19 @@
+{
+  "dataset": "beir/nfcorpus/test",
+  "documents": 3633,
+  "queries": 323,
+  "qrels": 12334,
+  "retriever": "raglite DuckDB FTS (match_bm25), document-level flat index",
+  "num_results": 1000,
+  "scores": {
+    "nDCG@100": 0.2728,
+    "R@100": 0.2497,
+    "RR@10": 0.5128,
+    "nDCG@10": 0.3178
+  },
+  "published_bm25_ndcg10": {
+    "BEIR paper": 0.325,
+    "Anserini (flat)": 0.3218,
+    "Vespa BM25": 0.313
+  }
+}

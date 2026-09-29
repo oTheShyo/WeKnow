@@ -52,18 +52,24 @@ turned on only after benchmarking it against the two-path baseline on a real que
 
 from __future__ import annotations
 
+import contextlib
+import csv
+import io
 import math
 import re
 import warnings
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
+from sqlalchemy import bindparam as sa_bindparam
 from sqlalchemy import delete as sa_delete
+from sqlalchemy import text as sa_text
 from sqlmodel import Session, col, func, select
 
 from raglite._config import DEFAULT_GRAPH_EXTRACTION_PROMPT, GraphConfig, RAGLiteConfig
@@ -616,6 +622,122 @@ def build_graph(
     return report
 
 
+# The staging shapes the graph writers hand over. The key names the shape rather than the table, so
+# `graph_relation_weight` stages the scored weights for an update of `graph_relation`; the rest
+# happen to coincide with a table name because they carry that table's rows.
+_GRAPH_STAGING_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
+    GraphEntity.__tablename__: (
+        ("id", "VARCHAR"),
+        ("title", "VARCHAR"),
+        ("entity_type", "VARCHAR"),
+        ("description", "VARCHAR"),
+    ),
+    GraphEntityChunk.__tablename__: (("entity_id", "VARCHAR"), ("chunk_id", "VARCHAR")),
+    # `mass` is the summed stated strength of every mention in this build, kept separate from the
+    # mean `strength` the table stores, because the merge is an observation-weighted mean.
+    GraphRelation.__tablename__: (
+        ("source_id", "VARCHAR"),
+        ("target_id", "VARCHAR"),
+        ("description", "VARCHAR"),
+        ("mass", "DOUBLE"),
+        ("observations", "BIGINT"),
+    ),
+    GraphChunk.__tablename__: (("chunk_id", "VARCHAR"), ("document_id", "VARCHAR")),
+    GraphChunkRelation.__tablename__: (
+        ("source_chunk_id", "VARCHAR"),
+        ("target_chunk_id", "VARCHAR"),
+        ("weight", "DOUBLE"),
+        ("degree", "BIGINT"),
+    ),
+}
+
+# The staging shape `recompute_relation_weights` scores edges through.
+_GRAPH_RELATION_WEIGHT_STAGING = "graph_relation_weight"
+_GRAPH_STAGING_COLUMNS[_GRAPH_RELATION_WEIGHT_STAGING] = (
+    ("source_id", "VARCHAR"),
+    ("target_id", "VARCHAR"),
+    ("weight", "DOUBLE"),
+)
+
+
+def _run_graph_sql(session: Session, statement: str) -> None:
+    """Run a set-based graph statement, bypassing the ORM unit of work."""
+    session.connection().exec_driver_sql(statement)
+
+
+@contextmanager
+def _staged_rows(session: Session, table_name: str, rows: Sequence[Sequence[Any]]) -> Iterator[str]:
+    """Stage `rows` as a relation named after `table_name`, and drop it again on exit.
+
+    One build hands over tens of thousands of rows at once — NFCorpus yields 5.8k entities, 14.6k
+    entity-chunk links, 69.5k relations and 3.6k chunk records. RAGLite's own insert path
+    (`raglite._insert.insert_documents`) adds ORM objects one at a time, which DuckDB executes as a
+    per-row prepared statement; measured against this graph that is ~45 rows/s, so the relations
+    alone would take ~25 minutes. The two obvious set-based alternatives are ruled out by
+    measurement too: every *parametrised* multi-row insert is quadratic on DuckDB (200 rows 1.4s,
+    1,000 rows 18s, 4,000 rows 77s — the same for `INSERT ... VALUES`, `INSERT ... SELECT FROM
+    (VALUES ...)` and `executemany`), and inlining literals means escaping corpus text and model
+    output by hand.
+
+    Serialising with the `csv` module and letting DuckDB scan the buffer set-wise avoids all three:
+    the `csv` module owns the quoting, so no extracted value is ever folded into SQL, and 69.5k rows
+    stage and insert in ~0.5s. DuckDB reads the buffer directly, so nothing touches the filesystem.
+    Other backends get the same relation as a temporary table filled with `executemany`, where the
+    driver batches it properly; either way the caller's upsert SQL is identical.
+    """
+    columns = _GRAPH_STAGING_COLUMNS[table_name]
+    staged = f"staging_{table_name}"
+    connection = session.connection()
+    # The view is backed by the relation object, so it has to stay referenced for as long as the
+    # view is queried: chaining `read_csv(...).create_view(...)` drops the intermediate relation and
+    # the view is left pointing at a released object-store handle.
+    staged_relation: Any = None
+    if connection.dialect.name == "duckdb":
+        buffer = io.StringIO()
+        csv.writer(buffer, quoting=csv.QUOTE_ALL).writerows(rows)
+        # `read_csv` on a file-like object is a DuckDB-only affordance with no SQLAlchemy-side
+        # equivalent, so this reaches past the abstraction to the driver connection.
+        duckdb_connection = connection.connection.driver_connection
+        assert duckdb_connection is not None  # mypy requires this; a settled connection has one
+        staged_relation = duckdb_connection.read_csv(
+            io.StringIO(buffer.getvalue()),
+            header=False,
+            # The schema is declared, so sniffing is both unnecessary and wrong for an empty buffer
+            # (with no rows to look at, the sniffer guesses a single column and then rejects the
+            # declared ones).
+            auto_detect=False,
+            delimiter=",",
+            quotechar='"',
+            escapechar='"',
+            columns=dict(columns),
+            # Every graph column is NOT NULL, so an empty field is an empty string, not a NULL. The
+            # reader treats a quoted empty field as NULL otherwise, which fails the constraint.
+            force_not_null=[column for column, _ in columns],
+        )
+        staged_relation.create_view(staged, replace=True)
+    else:
+        connection.exec_driver_sql(
+            f"CREATE TEMPORARY TABLE {staged}"
+            f" ({', '.join(f'{column} {sql_type}' for column, sql_type in columns)})"
+        )
+        names = [column for column, _ in columns]
+        connection.execute(
+            sa_text(
+                f"INSERT INTO {staged} ({', '.join(names)})"  # noqa: S608
+                f" VALUES ({', '.join(':' + name for name in names)})"
+            ),
+            [dict(zip(names, row, strict=True)) for row in rows],
+        )
+    try:
+        yield staged
+    finally:
+        with contextlib.suppress(Exception):
+            connection.exec_driver_sql(f"DROP VIEW IF EXISTS {staged}")
+        with contextlib.suppress(Exception):
+            connection.exec_driver_sql(f"DROP TABLE IF EXISTS {staged}")
+        staged_relation = None
+
+
 def _write_graph(
     rows: Sequence[tuple[ChunkId, DocumentId]],
     extractions: Sequence[GraphExtraction | None],
@@ -662,95 +784,106 @@ def _write_graph(
     if not succeeded:
         return
     with Session(create_database_engine(config)) as session:
-        # Record the chunks that yielded nothing too, so they are not extracted on every build.
+        # Write the chunk records first and on their own when nothing was extracted, so a chunk that
+        # yields no entities is still not extracted again on the next build.
         if not entity_titles:
-            for chunk_id, document_id in succeeded:
-                session.add(GraphChunk(chunk_id=chunk_id, document_id=document_id))
+            with _staged_rows(session, GraphChunk.__tablename__, list(succeeded)):
+                _run_graph_sql(
+                    session,
+                    """INSERT INTO graph_chunk (chunk_id, document_id)
+                       SELECT chunk_id, document_id FROM staging_graph_chunk
+                       ON CONFLICT DO NOTHING""",
+                )
             session.commit()
             return
-        entity_ids = list(entity_titles)
-        existing_entities: dict[str, GraphEntity] = {}
-        for batch in _batched(entity_ids):
-            entity_records: list[GraphEntity] = list(
-                session.exec(select(GraphEntity).where(col(GraphEntity.id).in_(batch))).all()
+        entity_rows = [
+            (
+                entity_id,
+                entity_titles[entity_id],
+                entity_types.get(entity_id, "other"),
+                entity_descriptions.get(entity_id, ""),
             )
-            for entity_record in entity_records:
-                existing_entities[entity_record.id] = entity_record
-        # Upsert entities: never overwrite a description we already have.
-        for entity_id in entity_ids:
-            stored = existing_entities.get(entity_id)
-            if stored is None:
-                session.add(
-                    GraphEntity(
-                        id=entity_id,
-                        title=entity_titles[entity_id],
-                        entity_type=entity_types.get(entity_id, "other"),
-                        description=entity_descriptions.get(entity_id, ""),
-                    )
-                )
-                continue
-            if not stored.description and entity_descriptions.get(entity_id):
-                stored.description = entity_descriptions[entity_id]
-                session.add(stored)
-        # Which (entity, chunk) links already exist for the chunks we just processed.
-        new_chunk_ids = [chunk_id for chunk_id, _ in succeeded]
-        existing_links: set[tuple[str, str]] = set()
-        for batch in _batched(new_chunk_ids):
-            stored_links: list[GraphEntityChunk] = list(
-                session.exec(
-                    select(GraphEntityChunk).where(col(GraphEntityChunk.chunk_id).in_(batch))
-                ).all()
+            for entity_id in entity_titles
+        ]
+        link_rows = [
+            (entity_id, chunk_id)
+            for entity_id, linked_chunk_ids in entity_chunks.items()
+            for chunk_id in linked_chunk_ids
+        ]
+        relation_rows = [
+            (
+                relation_key[0],
+                relation_key[1],
+                relation_descriptions.get(relation_key, ""),
+                relation_strengths[relation_key],
+                observations,
             )
-            for stored_link in stored_links:
-                existing_links.add((stored_link.entity_id, stored_link.chunk_id))
-        for entity_id, linked_chunk_ids in entity_chunks.items():
-            for chunk_id in linked_chunk_ids:
-                if (entity_id, chunk_id) not in existing_links:
-                    session.add(GraphEntityChunk(entity_id=entity_id, chunk_id=chunk_id))
-        # Upsert relations: the primary key is the (source, target) pair, so repeated mentions
-        # accumulate into one weighted edge.
-        existing_relations: dict[tuple[str, str], GraphRelation] = {}
-        for batch in _batched(entity_ids):
-            stored_relations: list[GraphRelation] = list(
-                session.exec(
-                    select(GraphRelation).where(
-                        col(GraphRelation.source_id).in_(batch),
-                        col(GraphRelation.target_id).in_(batch),
-                    )
-                ).all()
+            for relation_key, observations in relation_observations.items()
+        ]
+        with (
+            _staged_rows(session, GraphEntity.__tablename__, entity_rows),
+            _staged_rows(session, GraphEntityChunk.__tablename__, link_rows),
+            _staged_rows(session, GraphRelation.__tablename__, relation_rows),
+            _staged_rows(session, GraphChunk.__tablename__, list(succeeded)),
+        ):
+            # Entities: insert the ones we do not have, then fill a description we lacked. A stored
+            # description is never overwritten.
+            _run_graph_sql(
+                session,
+                """INSERT INTO graph_entity (id, title, entity_type, description)
+                   SELECT id, title, entity_type, description FROM staging_graph_entity
+                   WHERE id NOT IN (SELECT id FROM graph_entity)""",
             )
-            for stored_relation in stored_relations:
-                existing_relations[(stored_relation.source_id, stored_relation.target_id)] = (
-                    stored_relation
-                )
-        for relation_key, observations in relation_observations.items():
-            stored_edge = existing_relations.get(relation_key)
-            strength = relation_strengths[relation_key] / observations
-            if stored_edge is None:
-                session.add(
-                    GraphRelation(
-                        source_id=relation_key[0],
-                        target_id=relation_key[1],
-                        description=relation_descriptions.get(relation_key, ""),
-                        weight=1.0,  # `recompute_relation_weights` scores it below.
-                        strength=strength,
-                        observations=observations,
-                    )
-                )
-                continue
+            _run_graph_sql(
+                session,
+                """UPDATE graph_entity AS stored SET description = staged.description
+                   FROM staging_graph_entity AS staged
+                   WHERE stored.id = staged.id
+                     AND stored.description = ''
+                     AND staged.description <> ''""",
+            )
+            # A link is identified by the (entity, chunk) pair, so a repeated one is simply dropped.
+            _run_graph_sql(
+                session,
+                """INSERT INTO graph_entity_chunk (entity_id, chunk_id)
+                   SELECT entity_id, chunk_id FROM staging_graph_entity_chunk
+                   ON CONFLICT DO NOTHING""",
+            )
+            # Relations: the primary key is the (source, target) pair, so repeated mentions
+            # accumulate into one weighted edge. The merge runs *before* the insert so that an edge
+            # this build creates is not merged into itself — the per-row version it replaces
+            # snapshotted the existing edges up front and got the same result.
+            #
             # The stored strength is the mean over every chunk that stated the relation, so an
             # incremental build that sees one more mention cannot drag it around.
-            total = stored_edge.observations + observations
-            stored_edge.strength = (
-                stored_edge.strength * stored_edge.observations + relation_strengths[relation_key]
-            ) / total
-            stored_edge.observations = total
-            if not stored_edge.description and relation_descriptions.get(relation_key):
-                stored_edge.description = relation_descriptions[relation_key]
-            session.add(stored_edge)
-        # Bookkeeping last, so an interrupted write leaves the chunks pending rather than lost.
-        for chunk_id, document_id in succeeded:
-            session.add(GraphChunk(chunk_id=chunk_id, document_id=document_id))
+            _run_graph_sql(
+                session,
+                """UPDATE graph_relation AS stored
+                   SET strength = (stored.strength * stored.observations + staged.mass)
+                                  / (stored.observations + staged.observations),
+                       observations = stored.observations + staged.observations,
+                       description = CASE WHEN stored.description = '' THEN staged.description
+                                          ELSE stored.description END
+                   FROM staging_graph_relation AS staged
+                   WHERE stored.source_id = staged.source_id
+                     AND stored.target_id = staged.target_id""",
+            )
+            _run_graph_sql(
+                session,
+                """INSERT INTO graph_relation
+                       (source_id, target_id, description, weight, strength, observations)
+                   SELECT source_id, target_id, description, 1.0, mass / observations, observations
+                   FROM staging_graph_relation
+                   WHERE (source_id, target_id)
+                         NOT IN (SELECT source_id, target_id FROM graph_relation)""",
+            )
+            # Bookkeeping last, so an interrupted write leaves the chunks pending rather than lost.
+            _run_graph_sql(
+                session,
+                """INSERT INTO graph_chunk (chunk_id, document_id)
+                   SELECT chunk_id, document_id FROM staging_graph_chunk
+                   ON CONFLICT DO NOTHING""",
+            )
         session.commit()
 
 
@@ -828,35 +961,47 @@ def recompute_relation_weights(*, config: RAGLiteConfig | None = None) -> int:
     config = config or RAGLiteConfig()
     graph_config = config.graph
     with Session(create_database_engine(config)) as session:
-        relations = list(session.exec(select(GraphRelation)).all())
-        if not relations:
+        # Only the three columns the score needs: loading the edges as ORM objects and writing them
+        # back one at a time is what made this stage take 280s on NFCorpus, against 69,460 edges.
+        relation_rows = session.exec(
+            select(GraphRelation.source_id, GraphRelation.target_id, GraphRelation.strength)
+        ).all()
+        if not relation_rows:
             return 0
         supports, total_chunks = _entity_supports(session)
         cooccurrence_supports = _relation_cooccurrence_supports(
-            session, {(relation.source_id, relation.target_id) for relation in relations}
+            session, {(source_id, target_id) for source_id, target_id, _ in relation_rows}
         )
         # PMI first: it depends on corpus-wide statistics, so every edge is scored before any is
         # normalised.
         pmis: dict[tuple[GraphEntityId, GraphEntityId], float] = {}
-        for relation in relations:
-            key = (relation.source_id, relation.target_id)
+        for source_id, target_id, _ in relation_rows:
+            key = (source_id, target_id)
             joint = cooccurrence_supports.get(key, 0) / total_chunks if total_chunks else 0.0
-            source = supports.get(relation.source_id, 0) / total_chunks if total_chunks else 0.0
-            target = supports.get(relation.target_id, 0) / total_chunks if total_chunks else 0.0
+            source = supports.get(source_id, 0) / total_chunks if total_chunks else 0.0
+            target = supports.get(target_id, 0) / total_chunks if total_chunks else 0.0
             pmis[key] = pointwise_mutual_information(joint, source, target)
         max_pmi = max(pmis.values(), default=0.0)
-        for relation in relations:
-            key = (relation.source_id, relation.target_id)
+        scored_rows = []
+        for source_id, target_id, strength in relation_rows:
+            key = (source_id, target_id)
             normalized_pmi = pmis[key] / max_pmi if max_pmi > 0 else 0.0
-            normalized_strength = min(max(relation.strength, 0.0), 1.0)
+            normalized_strength = min(max(strength, 0.0), 1.0)
             combined = (
                 graph_config.pmi_weight * normalized_pmi
                 + graph_config.strength_weight * normalized_strength
             )
-            relation.weight = 1.0 + graph_config.weight_scale * combined
-            session.add(relation)
+            scored_rows.append((source_id, target_id, 1.0 + graph_config.weight_scale * combined))
+        with _staged_rows(session, _GRAPH_RELATION_WEIGHT_STAGING, scored_rows):
+            _run_graph_sql(
+                session,
+                """UPDATE graph_relation AS stored SET weight = staged.weight
+                   FROM staging_graph_relation_weight AS staged
+                   WHERE stored.source_id = staged.source_id
+                     AND stored.target_id = staged.target_id""",
+            )
         session.commit()
-    return len(relations)
+    return len(relation_rows)
 
 
 def build_chunk_relations(*, config: RAGLiteConfig | None = None) -> int:
@@ -875,14 +1020,16 @@ def build_chunk_relations(*, config: RAGLiteConfig | None = None) -> int:
     graph_config = config.graph
     with Session(create_database_engine(config)) as session:
         session.execute(sa_delete(GraphChunkRelation))
-        relations = list(session.exec(select(GraphRelation)).all())
-        if not relations:
+        relation_rows = session.exec(
+            select(GraphRelation.source_id, GraphRelation.target_id, GraphRelation.weight)
+        ).all()
+        if not relation_rows:
             session.commit()
             return 0
         entity_ids = {
             entity_id
-            for relation in relations
-            for entity_id in (relation.source_id, relation.target_id)
+            for source_id, target_id, _ in relation_rows
+            for entity_id in (source_id, target_id)
         }
         chunks_by_entity: defaultdict[GraphEntityId, list[ChunkId]] = defaultdict(list)
         for batch in _batched(list(entity_ids)):
@@ -893,9 +1040,9 @@ def build_chunk_relations(*, config: RAGLiteConfig | None = None) -> int:
             ).all():
                 chunks_by_entity[entity_id].append(chunk_id)
         edges: dict[tuple[ChunkId, ChunkId], tuple[float, int]] = {}
-        for relation in relations:
-            source_chunks = chunks_by_entity.get(relation.source_id, [])
-            target_chunks = chunks_by_entity.get(relation.target_id, [])
+        for source_id, target_id, weight in relation_rows:
+            source_chunks = chunks_by_entity.get(source_id, [])
+            target_chunks = chunks_by_entity.get(target_id, [])
             degree = len(source_chunks) + len(target_chunks)
             for source_chunk_id in source_chunks[: graph_config.max_chunks_per_entity]:
                 for target_chunk_id in target_chunks[: graph_config.max_chunks_per_entity]:
@@ -905,16 +1052,22 @@ def build_chunk_relations(*, config: RAGLiteConfig | None = None) -> int:
                         (source_chunk_id, target_chunk_id),
                         (target_chunk_id, source_chunk_id),
                     ):
-                        weight, stored_degree = edges.get(key, (0.0, 0))
-                        edges[key] = (weight + relation.weight, max(stored_degree, degree))
-        for (source_chunk_id, target_chunk_id), (weight, degree) in edges.items():
-            session.add(
-                GraphChunkRelation(
-                    source_chunk_id=source_chunk_id,
-                    target_chunk_id=target_chunk_id,
-                    weight=weight,
-                    degree=degree,
-                )
+                        stored_weight, stored_degree = edges.get(key, (0.0, 0))
+                        edges[key] = (stored_weight + weight, max(stored_degree, degree))
+        with _staged_rows(
+            session,
+            GraphChunkRelation.__tablename__,
+            [
+                (source_chunk_id, target_chunk_id, weight, degree)
+                for (source_chunk_id, target_chunk_id), (weight, degree) in edges.items()
+            ],
+        ):
+            _run_graph_sql(
+                session,
+                """INSERT INTO graph_chunk_relation
+                       (source_chunk_id, target_chunk_id, weight, degree)
+                   SELECT source_chunk_id, target_chunk_id, weight, degree
+                   FROM staging_graph_chunk_relation""",
             )
         session.commit()
     return len(edges)
@@ -933,10 +1086,17 @@ def match_seed_entities(
     Longer titles win, because a longer match is more specific: a query mentioning "quantum error
     correction" should seed that entity rather than a bare "quantum".
     """
+    lower_query = query.casefold()
     matched: list[tuple[int, GraphEntityId]] = []
     for entity_id, title in entities:
         normalized = normalize_entity_title(title)
         if not normalized or len(normalized) > graph_config.max_entity_title_length:
+            continue
+        # Both branches of `title_in_query` require the title to occur in the query, so this one
+        # C-speed substring test rules out almost the whole title list. Without it every title pays
+        # a freshly compiled boundary pattern: on NFCorpus that is 5.8k compilations and 0.7s per
+        # query, which matters when thousands of queries are being evaluated.
+        if normalized.casefold() not in lower_query:
             continue
         if title_in_query(normalized, query):
             matched.append((len(normalized), entity_id))
@@ -998,21 +1158,37 @@ def extract_query_entities(
 
 
 def _chunk_neighbors(
-    session: Session, chunk_ids: Sequence[ChunkId]
+    session: Session, chunk_ids: Sequence[ChunkId], graph_config: GraphConfig
 ) -> dict[ChunkId, list[tuple[ChunkId, float]]]:
-    """Return the chunk-graph neighbours of `chunk_ids` with their normalised edge weights."""
+    """Return the chunk-graph neighbours of `chunk_ids` with their normalised edge weights.
+
+    Only each chunk's `chunk_neighbor_limit` heaviest edges are returned, and the cut is made in
+    SQL so the rows never reach Python. The projection links every pair of chunks that share an
+    entity, so a hub entity gives a chunk thousands of neighbours: on NFCorpus the heaviest chunk
+    has 2,852 out of a possible 3,632, and expanding them all pulled in 3,255 of the 3,633 chunks
+    per query at ~2M rows and ~20s. A near-complete expansion also destroys the ranking, because
+    every chunk ends up scored. The heaviest edges are the ones the projection already judged
+    meaningful, so following those is both cheaper and more discriminating.
+    """
     neighbors: defaultdict[ChunkId, list[tuple[ChunkId, float]]] = defaultdict(list)
     if not chunk_ids:
         return {}
+    limit = max(1, graph_config.chunk_neighbor_limit)
+    statement = sa_text(
+        """SELECT source_chunk_id, target_chunk_id, weight
+           FROM (
+               SELECT source_chunk_id, target_chunk_id, weight,
+                      row_number() OVER (PARTITION BY source_chunk_id
+                                         ORDER BY weight DESC) AS neighbor_rank
+               FROM graph_chunk_relation
+               WHERE source_chunk_id IN :chunk_ids
+           ) AS ranked
+           WHERE neighbor_rank <= :limit"""
+    ).bindparams(sa_bindparam("chunk_ids", expanding=True))
     for batch in _batched(list(chunk_ids)):
-        edges = session.exec(
-            select(
-                GraphChunkRelation.source_chunk_id,
-                GraphChunkRelation.target_chunk_id,
-                GraphChunkRelation.weight,
-            ).where(col(GraphChunkRelation.source_chunk_id).in_(batch))
-        ).all()
-        for source_chunk_id, target_chunk_id, weight in edges:
+        for source_chunk_id, target_chunk_id, weight in session.connection().execute(
+            statement, {"chunk_ids": list(batch), "limit": limit}
+        ):
             # Edges carry the sum of the relation weights that produced them, so a neighbour's
             # pull is the edge's share of the strongest possible edge.
             neighbors[source_chunk_id].append((target_chunk_id, min(weight / 10.0, 1.0)))
@@ -1035,7 +1211,7 @@ def _expand_chunk_neighbors(
     for hop in range(max(0, graph_config.chunk_neighbor_hops)):
         if not frontier:
             break
-        neighbors = _chunk_neighbors(session, frontier)
+        neighbors = _chunk_neighbors(session, frontier, graph_config)
         decay = graph_config.chunk_neighbor_weight ** (hop + 1)
         next_frontier: list[ChunkId] = []
         for chunk_id in frontier:
