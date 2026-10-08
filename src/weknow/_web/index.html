@@ -235,7 +235,7 @@ async function delDoc(id) {
   await fetch("/api/documents/" + id, { method: "DELETE" });
   refreshDocs();
 }
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&","<":"<",">":">",'"':"""}[c]));
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => (({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&#34;'}[c])));
 refreshDocs();
 
 /* ── 对话 ── */
