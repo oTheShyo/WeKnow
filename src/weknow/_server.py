@@ -1,0 +1,235 @@
+"""WeKnow web server — a WeKnora-style frontend for the RAG toolkit.
+
+Serves a single-page application (WeKnora-like: knowledge-base management, chat with
+citations, retrieval testing) plus a small JSON/SSE API on top of the WeKnow core.
+
+Everything is configured through the project `.env` via `config_from_environ`; the server
+adds no configuration of its own. Documents are inserted through the same
+`insert_documents` path as the CLI, so content-hash deduplication and the parser registry
+apply here too.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import tempfile
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse, StreamingResponse
+from pydantic import BaseModel
+
+from weknow._dotenv import config_from_environ, ensure_dotenv_loaded
+
+_WEB_DIR = Path(__file__).parent / "_web"
+_UPLOAD_DIR = Path(tempfile.gettempdir()) / "weknow_uploads"
+
+app = FastAPI(title="WeKnow", docs_url=None, redoc_url=None)
+
+# Upload tasks are tracked in memory: {task_id: {name, status, detail, chunks}}. Status is
+# best-effort; a restart clears it, and the document table remains the source of truth.
+_TASKS: dict[str, dict[str, Any]] = {}
+_TASKS_LOCK = threading.Lock()
+
+
+def _get_config() -> Any:
+    """Build the config from the environment. Cheap after the first call (cached downstream)."""
+    return config_from_environ(disable_default_reranker=True)
+
+
+def _task_update(task_id: str, **fields: Any) -> None:
+    with _TASKS_LOCK:
+        if task_id in _TASKS:
+            _TASKS[task_id].update(fields)
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    """Serialize a payload for an SSE data line (single line, UTF-8)."""
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _insert_in_background(task_id: str, tmp_path: Path) -> None:
+    """Insert an uploaded document off the request path, updating the task as it goes."""
+    from sqlmodel import Session, select
+
+    from weknow import Document, insert_documents
+    from weknow._database import create_database_engine
+
+    try:
+        _task_update(task_id, status="parsing")
+        config = _get_config()
+        document = Document.from_path(tmp_path, config=config)
+        # `insert_documents` silently skips documents whose content hash is already present,
+        # so report that case explicitly instead of claiming success.
+        from weknow._database import Document as DocumentRow
+
+        with Session(create_database_engine(config)) as session:
+            exists = (
+                session.exec(
+                    select(DocumentRow.id).where(DocumentRow.id == document.id)  # type: ignore[arg-type]
+                ).first()
+                is not None
+            )
+        if exists:
+            _task_update(
+                task_id, status="duplicate", detail="内容已存在（content-hash 相同），已跳过"
+            )
+            return
+        _task_update(task_id, status="embedding")
+        insert_documents([document], config=config)
+        _task_update(task_id, status="ready", detail="", document_id=str(document.id))
+    except Exception as exc:  # noqa: BLE001
+        _task_update(task_id, status="failed", detail=str(exc)[:300])
+    finally:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+
+
+class ChatRequest(BaseModel):
+    """A chat request: the full OpenAI-style message history minus the pending answer."""
+
+    messages: list[dict[str, str]]
+
+
+class SearchRequest(BaseModel):
+    """A retrieval-test request."""
+
+    query: str
+    top_k: int = 5
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    """Serve the single-page frontend."""
+    return HTMLResponse((_WEB_DIR / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/api/documents")
+def list_documents() -> dict[str, Any]:
+    """List every document in the knowledge base, with its chunk count."""
+    from sqlmodel import Session, select
+
+    from weknow._database import Chunk, Document, create_database_engine
+
+    engine = create_database_engine(_get_config())
+    with Session(engine) as session:
+        documents = session.exec(select(Document)).all()
+        chunk_counts: dict[str, int] = {}
+        for document_id in session.exec(select(Chunk.document_id)).all():
+            chunk_counts[str(document_id)] = chunk_counts.get(str(document_id), 0) + 1
+    items = [
+        {
+            "id": str(doc.id),
+            "filename": doc.filename,
+            "size": (doc.metadata_ or {}).get("size"),
+            "chunks": chunk_counts.get(str(doc.id), 0),
+        }
+        for doc in documents
+    ]
+    with _TASKS_LOCK:
+        tasks = [dict(task, task_id=task_id) for task_id, task in _TASKS.items()]
+    return {"documents": items, "tasks": tasks}
+
+
+@app.post("/api/documents")
+async def upload_document(file: UploadFile = File(...)) -> dict[str, str]:  # type: ignore[no-untyped-def]
+    """Accept an uploaded document and insert it in the background."""
+    task_id = uuid.uuid4().hex[:12]
+    display_name = file.filename or "document"
+    suffix = Path(display_name).suffix or ".txt"
+    _UPLOAD_DIR.mkdir(exist_ok=True)
+    tmp_path = _UPLOAD_DIR / f"{task_id}{suffix}"
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="空文件")
+    tmp_path.write_bytes(content)
+    with _TASKS_LOCK:
+        _TASKS[task_id] = {
+            "task_id": task_id,
+            "filename": display_name,
+            "status": "uploading",
+            "detail": "",
+            "started": time.time(),
+        }
+    threading.Thread(target=_insert_in_background, args=(task_id, tmp_path), daemon=True).start()
+    return {"task_id": task_id}
+
+
+@app.delete("/api/documents/{doc_id}")
+def delete_document(doc_id: str) -> dict[str, str]:
+    """Delete a document and all of its chunks and embeddings."""
+    from weknow import delete_documents
+
+    delete_documents([doc_id], config=_get_config())
+    return {"deleted": doc_id}
+
+
+@app.post("/api/search")
+def search(request: SearchRequest) -> dict[str, Any]:
+    """Run a hybrid retrieval and return the ranked chunks with their scores."""
+    from weknow import hybrid_search, retrieve_chunks
+
+    config = _get_config()
+    chunk_ids, scores = hybrid_search(request.query, config=config)
+    chunks = retrieve_chunks(chunk_ids[: request.top_k], config=config)
+    results = [
+        {
+            "document_id": str(chunk.document_id),
+            "filename": chunk.document.filename,
+            "headings": chunk.headings,
+            "body": chunk.body,
+            "score": round(scores[i], 4) if i < len(scores) else None,
+        }
+        for i, chunk in enumerate(chunks)
+    ]
+    return {"results": results}
+
+
+@app.post("/api/chat")
+def chat(request: ChatRequest) -> StreamingResponse:
+    """Stream a RAG answer as server-sent events, then the retrieved sources."""
+    config = _get_config()
+    chunk_spans: list[Any] = []
+    messages = [m for m in request.messages if m.get("content")]
+
+    def stream() -> Any:
+        from weknow import rag
+
+        try:
+            for token in rag(messages, on_retrieval=chunk_spans.extend, config=config):
+                yield _sse({"token": token})
+        except Exception as exc:  # noqa: BLE001
+            yield _sse({"error": str(exc)[:300]})
+            return
+        sources = [
+            {
+                "index": i + 1,
+                "filename": span.document.filename,
+                "document_id": str(span.document.id),
+                "text": str(span)[:800],
+            }
+            for i, span in enumerate(chunk_spans)
+        ]
+        yield _sse({"sources": sources})
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
+    )
+
+
+def main(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Run the WeKnow web server."""
+    import uvicorn
+
+    ensure_dotenv_loaded()
+    uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,24 +1,16 @@
 services:
 
-  devcontainer:
-    build:
-      target: dev
+  weknow:
+    build: .
+    container_name: weknow
+    ports:
+      - "8000:8000"
+    # 所有可配置项集中在项目根目录的 .env（参考 .env.example 生成）。
+    env_file:
+      - .env
     environment:
-      - CI
-      - OPENAI_API_KEY
-    depends_on:
-      - postgres
+      # 数据库固定落到挂载卷里，容器重建后知识库不丢。
+      RAG_DB_URL: duckdb:///data/weknow.db
     volumes:
-      - ..:/workspaces
-      - command-history-volume:/home/user/.history/
-
-  postgres:
-    image: pgvector/pgvector:pg17
-    environment:
-      POSTGRES_USER: raglite_user
-      POSTGRES_PASSWORD: raglite_password
-    tmpfs:
-      - /var/lib/postgresql/data
-
-volumes:
-  command-history-volume:
+      - ./data:/app/data
+    restart: unless-stopped

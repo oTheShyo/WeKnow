@@ -6,3 +6,15 @@
 
 # Python
 .venv/
+__pycache__/
+*.pyc
+
+# 密钥与数据不进镜像（compose 运行时挂载）；README.md 参与构建，不能排除
+.env
+.env.*
+data/
+.uploads/
+*.db
+*.lock
+reports/
+tests/

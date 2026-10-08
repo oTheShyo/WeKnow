@@ -78,6 +78,7 @@ dev = [
 [project.optional-dependencies]  # https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#dependencies-optional-dependencies
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
+server = ["fastapi (>=0.110.0)", "python-multipart (>=0.0.9)", "uvicorn (>=0.29.0)"]
 # Large Language Models:
 llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
 # Markdown conversion:

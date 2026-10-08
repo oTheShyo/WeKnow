@@ -48,6 +48,24 @@ def main(
 
 
 @cli.command()
+def serve(
+    ctx: typer.Context,
+    host: str = typer.Option("127.0.0.1", help="Host to bind the web server to"),
+    port: int = typer.Option(8000, help="Port to serve the web frontend on"),
+) -> None:
+    """Serve the WeKnow web frontend (WeKnora-style)."""
+    try:
+        import uvicorn  # noqa: F401
+        from fastapi import FastAPI  # noqa: F401
+    except ModuleNotFoundError as error:
+        error_message = "To serve the web frontend, please install the `server` extra: uv sync --extra server."
+        raise ModuleNotFoundError(error_message) from error
+    from weknow._server import main as run_server
+
+    run_server(host=host, port=port)
+
+
+@cli.command()
 def chainlit(ctx: typer.Context) -> None:
     """Serve a Chainlit frontend."""
     # Set the environment variables for the Chainlit frontend.

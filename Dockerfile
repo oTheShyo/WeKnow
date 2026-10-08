@@ -1,33 +1,29 @@
 # syntax=docker/dockerfile:1
-FROM ghcr.io/astral-sh/uv:python3.10-bookworm AS dev
+# WeKnow — 单容器生产部署
+# 构建：docker build -t weknow .
+# 运行：docker compose up -d   （compose 会挂载 .env 与数据卷）
 
-# Create and activate a virtual environment [1].
-# [1] https://docs.astral.sh/uv/concepts/projects/config/#project-environment-path
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH=$VIRTUAL_ENV/bin:$PATH
-ENV UV_PROJECT_ENVIRONMENT=$VIRTUAL_ENV
+FROM python:3.11-slim
 
-# Tell Git that the workspace is safe to avoid 'detected dubious ownership in repository' warnings.
-RUN git config --system --add safe.directory '*'
+# 安装 uv（依赖管理），配合 uv.lock 保证可复现安装。
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Create a non-root user and give it passwordless sudo access [1].
-# [1] https://code.visualstudio.com/remote/advancedcontainers/add-nonroot-user
-RUN --mount=type=cache,target=/var/cache/apt/ \
-    --mount=type=cache,target=/var/lib/apt/ \
-    groupadd --gid 1000 user && \
-    useradd --create-home --no-log-init --gid 1000 --uid 1000 --shell /usr/bin/bash user && \
-    chown user:user /opt/ && \
-    apt-get update && apt-get install --no-install-recommends --yes sudo clang libomp-dev && \
-    echo 'user ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/user && chmod 0440 /etc/sudoers.d/user
-USER user
+WORKDIR /app
 
-# Configure the non-root user's shell.
-RUN mkdir ~/.history/ && \
-    echo 'HISTFILE=~/.history/.bash_history' >> ~/.bashrc && \
-    echo 'bind "\"\e[A\": history-search-backward"' >> ~/.bashrc && \
-    echo 'bind "\"\e[B\": history-search-forward"' >> ~/.bashrc && \
-    echo 'eval "$(starship init bash)"' >> ~/.bashrc
+# 先复制依赖清单再复制源码，利用 Docker 层缓存：依赖不变时跳过安装。
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
 
-# Explicitly configure compilers for llama-cpp-python.
-ENV CC=clang
-ENV CXX=clang++
+# server extra 包含 Web 前端所需的 fastapi / uvicorn / python-multipart。
+RUN uv sync --frozen --no-dev --extra server
+
+# HF_ENDPOINT 指向镜像站：容器内首次启动要下载 SaT 分句模型（约 400 MB）。
+# LITELLM_LOCAL_MODEL_COST_MAP 禁止 litellm 联网拉取模型价格表。
+ENV HF_ENDPOINT=https://hf-mirror.com \
+    LITELLM_LOCAL_MODEL_COST_MAP=True \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+# 配置（.env）与数据库（data/）由 compose 挂载进来；容器内不落任何状态。
+CMD [".venv/bin/weknow", "serve", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WeKnow — 知识库问答</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --panel: #ffffff; --border: #e4e9f0;
+    --text: #1f2937; --text-2: #6b7280;
+    --accent: #4f6ef2; --accent-weak: #eef2ff;
+    --ok: #16a34a; --warn: #d97706; --err: #dc2626;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── 顶栏 ── */
+  .topbar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; flex-shrink: 0; }
+  .logo { font-size: 18px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+  .logo .dot { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
+  .tabs { display: flex; gap: 4px; height: 100%; }
+  .tab { padding: 0 18px; display: flex; align-items: center; cursor: pointer; color: var(--text-2); border-bottom: 2px solid transparent; font-size: 14px; user-select: none; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .topbar .spacer { flex: 1; }
+  .env-chip { font-size: 12px; color: var(--text-2); background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 4px 12px; }
+
+  /* ── 主体 ── */
+  .main { flex: 1; overflow: hidden; }
+  .view { display: none; height: 100%; }
+  .view.active { display: block; }
+
+  /* ── 知识库 ── */
+  .kb-wrap { max-width: 960px; margin: 0 auto; padding: 24px; height: 100%; display: flex; flex-direction: column; gap: 16px; }
+  .dropzone { background: var(--panel); border: 2px dashed var(--border); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--text-2); cursor: pointer; transition: border-color .15s, background .15s; }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); }
+  .dropzone b { color: var(--accent); }
+  .dropzone .hint { font-size: 12px; margin-top: 6px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .card-head { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 18px; color: var(--text-2); font-weight: 500; background: #fafbfd; border-bottom: 1px solid var(--border); }
+  td { padding: 11px 18px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbff; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+  .status .s-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .s-ready { color: var(--ok); } .s-ready .s-dot { background: var(--ok); }
+  .s-parse, .s-embed, .s-upload { color: var(--warn); } .s-parse .s-dot, .s-embed .s-dot, .s-upload .s-dot { background: var(--warn); animation: pulse 1.2s infinite; }
+  .s-failed { color: var(--err); } .s-failed .s-dot { background: var(--err); }
+  .s-duplicate { color: var(--text-2); } .s-duplicate .s-dot { background: var(--text-2); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .btn-del { color: var(--err); background: none; border: none; cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 6px; }
+  .btn-del:hover { background: #fef2f2; }
+  .empty-row td { text-align: center; color: var(--text-2); padding: 28px; }
+
+  /* ── 对话 ── */
+  .chat-layout { display: flex; height: 100%; }
+  .chat-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .msgs { flex: 1; overflow-y: auto; padding: 24px; }
+  .msg { max-width: 760px; margin: 0 auto 18px; display: flex; gap: 12px; }
+  .msg .avatar { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; }
+  .msg.user .avatar { background: var(--text-2); }
+  .msg.bot .avatar { background: var(--accent); }
+  .bubble { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; flex: 1; }
+  .msg.user .bubble { background: var(--accent-weak); border-color: #dbe4ff; }
+  .cite { display: inline-block; background: var(--accent-weak); color: var(--accent); border-radius: 4px; font-size: 11px; padding: 0 5px; margin: 0 1px; cursor: pointer; }
+  .src-panel { width: 320px; border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 18px; }
+  .src-panel h3 { font-size: 13px; color: var(--text-2); font-weight: 600; margin-bottom: 12px; }
+  .src-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-size: 12px; line-height: 1.6; }
+  .src-item .src-name { color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+  .src-item .src-text { color: var(--text-2); max-height: 110px; overflow: hidden; }
+  .inputbar { border-top: 1px solid var(--border); background: var(--panel); padding: 14px 24px; }
+  .inputbar .inner { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; }
+  .inputbar textarea { flex: 1; resize: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; font-size: 14px; font-family: inherit; height: 44px; outline: none; }
+  .inputbar textarea:focus { border-color: var(--accent); }
+  .btn-send { background: var(--accent); color: #fff; border: none; border-radius: var(--radius); padding: 0 22px; font-size: 14px; cursor: pointer; }
+  .btn-send:disabled { opacity: .5; cursor: not-allowed; }
+  .typing { color: var(--text-2); font-size: 13px; }
+
+  /* ── 检索测试 ── */
+  .st-wrap { max-width: 860px; margin: 0 auto; padding: 24px; height: 100%; display: flex; flex-direction: column; gap: 16px; }
+  .st-inputbar { display: flex; gap: 10px; }
+  .st-inputbar input { flex: 1; border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 14px; font-size: 14px; outline: none; }
+  .st-inputbar input:focus { border-color: var(--accent); }
+  .results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .result { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; font-size: 13px; }
+  .result .r-head { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .result .r-name { color: var(--accent); font-weight: 600; font-size: 12px; }
+  .result .r-score { color: var(--text-2); font-size: 12px; }
+  .result .r-body { color: var(--text); line-height: 1.65; white-space: pre-wrap; max-height: 150px; overflow: hidden; }
+  .placeholder { color: var(--text-2); text-align: center; padding: 48px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo"><span class="dot">W</span>WeKnow</div>
+  <div class="tabs">
+    <div class="tab active" data-view="kb">知识库</div>
+    <div class="tab" data-view="chat">对话</div>
+    <div class="tab" data-view="search">检索测试</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="env-chip" id="envChip">本地知识库</div>
+</div>
+
+<div class="main">
+
+  <!-- 知识库 -->
+  <div class="view active" id="view-kb">
+    <div class="kb-wrap">
+      <div class="dropzone" id="dropzone">
+        <div><b>点击或拖拽文件到此处上传</b></div>
+        <div class="hint">支持 md / txt / pdf / docx / pptx / html / csv 等 28 类格式 · 自动解析、切片、建索引</div>
+        <input type="file" id="fileInput" hidden>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <span>文档列表</span>
+          <span style="font-weight:400;color:var(--text-2);font-size:12px" id="docCount"></span>
+        </div>
+        <table>
+          <thead><tr><th style="width:45%">文件名</th><th>大小</th><th>切片数</th><th>状态</th><th style="width:70px">操作</th></tr></thead>
+          <tbody id="docRows"><tr class="empty-row"><td colspan="5">加载中…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 对话 -->
+  <div class="view" id="view-chat">
+    <div class="chat-layout">
+      <div class="chat-col">
+        <div class="msgs" id="msgs">
+          <div class="placeholder">已基于知识库就绪。输入问题开始对话，回答会引用检索到的来源。</div>
+        </div>
+        <div class="inputbar">
+          <div class="inner">
+            <textarea id="chatInput" placeholder="输入问题，Enter 发送…"></textarea>
+            <button class="btn-send" id="sendBtn">发送</button>
+          </div>
+        </div>
+      </div>
+      <div class="src-panel" id="srcPanel">
+        <h3>引用来源</h3>
+        <div class="placeholder" id="srcEmpty" style="padding:24px 0;font-size:12px">暂无来源</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 检索测试 -->
+  <div class="view" id="view-search">
+    <div class="st-wrap">
+      <div class="st-inputbar">
+        <input id="searchInput" placeholder="输入检索词，测试混合检索（BM25 + 向量 + RRF）…">
+        <button class="btn-send" id="searchBtn" style="height:44px">检索</button>
+      </div>
+      <div class="results" id="searchResults">
+        <div class="placeholder">输入检索词查看命中的切片与得分</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmtSize = n => n == null ? "—" : n < 1024 ? n + " B" : n < 1048576 ? (n/1024).toFixed(1) + " KB" : (n/1048576).toFixed(1) + " MB";
+const STATUS_MAP = { ready:["已就绪","s-ready"], parsing:["解析中","s-parse"], embedding:["建索引中","s-embed"], uploading:["上传中","s-upload"], failed:["失败","s-failed"], duplicate:["已存在·跳过","s-duplicate"] };
+
+/* ── 标签页 ── */
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(x => x.classList.remove("active"));
+  t.classList.add("active");
+  $("view-" + t.dataset.view).classList.add("active");
+});
+
+/* ── 知识库 ── */
+const dropzone = $("dropzone"), fileInput = $("fileInput");
+dropzone.onclick = () => fileInput.click();
+fileInput.onchange = () => { if (fileInput.files[0]) upload(fileInput.files[0]); fileInput.value = ""; };
+dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add("drag"); };
+dropzone.ondragleave = () => dropzone.classList.remove("drag");
+dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove("drag"); if (e.dataTransfer.files[0]) upload(e.dataTransfer.files[0]); };
+
+async function upload(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  dropzone.querySelector("b").textContent = `正在上传 ${file.name} …`;
+  try {
+    const r = await fetch("/api/documents", { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  } catch (e) {
+    alert("上传失败：" + e.message);
+  } finally {
+    dropzone.querySelector("b").textContent = "点击或拖拽文件到此处上传";
+    pollUntilDone();
+  }
+}
+
+let pollTimer = null;
+async function pollUntilDone() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    await refreshDocs();
+    const hasPending = (await (await fetch("/api/documents")).json()).tasks
+      .some(t => ["uploading","parsing","embedding"].includes(t.status));
+    if (!hasPending) clearInterval(pollTimer);
+  }, 2000);
+}
+
+async function refreshDocs() {
+  try {
+    const data = await (await fetch("/api/documents")).json();
+    const rows = [];
+    for (const t of data.tasks) {
+      const [label, cls] = STATUS_MAP[t.status] || [t.status, ""];
+      rows.push(`<tr><td>${esc(t.filename)}</td><td>—</td><td>—</td>
+        <td><span class="status ${cls}"><span class="s-dot"></span>${label}${t.detail ? " · " + esc(t.detail) : ""}</span></td><td></td></tr>`);
+    }
+    for (const d of data.documents) {
+      rows.push(`<tr><td>${esc(d.filename)}</td><td>${fmtSize(d.size)}</td><td>${d.chunks}</td>
+        <td><span class="status s-ready"><span class="s-dot"></span>已就绪</span></td>
+        <td><button class="btn-del" onclick="delDoc('${d.id}')">删除</button></td></tr>`);
+    }
+    $("docRows").innerHTML = rows.length ? rows.join("") : `<tr class="empty-row"><td colspan="5">知识库为空，上传第一篇文档开始使用</td></tr>`;
+    $("docCount").textContent = data.documents.length ? `${data.documents.length} 篇文档` : "";
+  } catch (e) { /* 服务未就绪时静默 */ }
+}
+async function delDoc(id) {
+  if (!confirm("确定删除这篇文档及其全部切片？")) return;
+  await fetch("/api/documents/" + id, { method: "DELETE" });
+  refreshDocs();
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&","<":"<",">":">",'"':"""}[c]));
+refreshDocs();
+
+/* ── 对话 ── */
+const msgs = $("msgs"), chatInput = $("chatInput"), sendBtn = $("sendBtn");
+let history = [], busy = false;
+sendBtn.onclick = send;
+chatInput.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+
+function addMsg(role, text) {
+  msgs.querySelector(".placeholder")?.remove();
+  const div = document.createElement("div");
+  div.className = "msg " + (role === "user" ? "user" : "bot");
+  div.innerHTML = `<div class="avatar">${role === "user" ? "你" : "W"}</div><div class="bubble">${esc(text)}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div.querySelector(".bubble");
+}
+
+async function send() {
+  const q = chatInput.value.trim();
+  if (!q || busy) return;
+  busy = true; sendBtn.disabled = true;
+  chatInput.value = "";
+  addMsg("user", q);
+  history.push({ role: "user", content: q });
+  const bubble = addMsg("bot", "");
+  bubble.innerHTML = `<span class="typing">检索知识库并生成回答…</span>`;
+  $("srcEmpty")?.remove();
+  $("srcPanel").querySelectorAll(".src-item").forEach(x => x.remove());
+
+  try {
+    const resp = await fetch("/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history })
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "", answer = "";
+    while (true) {
+      const { done, value } = reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 2);
+        if (!line.startsWith("data: ")) continue;
+        const payload = line.slice(6);
+        if (payload === "[DONE]") continue;
+        const ev = JSON.parse(payload);
+        if (ev.token) {
+          answer += ev.token;
+          bubble.textContent = answer;
+          msgs.scrollTop = msgs.scrollHeight;
+        } else if (ev.error) {
+          bubble.textContent = answer + `\n\n⚠️ ${ev.error}`;
+        } else if (ev.sources) {
+          ev.sources.forEach(s => {
+            const div = document.createElement("div");
+            div.className = "src-item";
+            div.innerHTML = `<div class="src-name">[${s.index}] ${esc(s.filename)}</div><div class="src-text">${esc(s.text)}</div>`;
+            $("srcPanel").appendChild(div);
+          });
+          if (!ev.sources.length) {
+            const div = document.createElement("div");
+            div.className = "src-item"; div.textContent = "本次回答未引用知识库内容（通用常识回答）";
+            $("srcPanel").appendChild(div);
+          }
+        }
+      }
+    }
+    history.push({ role: "assistant", content: answer });
+  } catch (e) {
+    bubble.textContent = "⚠️ 请求失败：" + e.message;
+  } finally {
+    busy = false; sendBtn.disabled = false;
+  }
+}
+
+/* ── 检索测试 ── */
+$("searchBtn").onclick = async () => {
+  const q = $("searchInput").value.trim();
+  if (!q) return;
+  $("searchResults").innerHTML = `<div class="placeholder">检索中…</div>`;
+  try {
+    const data = await (await fetch("/api/search", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q, top_k: 8 })
+    })).json();
+    $("searchResults").innerHTML = data.results.length
+      ? data.results.map(r => `
+        <div class="result">
+          <div class="r-head"><span class="r-name">${esc(r.filename)}${r.headings ? " · " + esc(r.headings) : ""}</span>
+          <span class="r-score">score ${r.score ?? "—"}</span></div>
+          <div class="r-body">${esc(r.body)}</div>
+        </div>`).join("")
+      : `<div class="placeholder">没有命中的切片</div>`;
+  } catch (e) {
+    $("searchResults").innerHTML = `<div class="placeholder">检索失败：${esc(e.message)}</div>`;
+  }
+};
+$("searchInput").addEventListener("keydown", e => { if (e.key === "Enter") $("searchBtn").click(); });
+</script>
+</body>
+</html>
