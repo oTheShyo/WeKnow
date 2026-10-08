@@ -1,6 +1,6 @@
 # WeKnow 终端配置与运行手册
 
-> 在终端里从零到跑通的完整操作步骤。Windows + Git Bash（本机环境）。
+> 在终端里从零到跑通的完整操作步骤。Windows + Git Bash（本机环境）。  
 > 原理见 `WeKnow-完整教程.md`；能力清单见 `WeKnow-使用指南.md`。这份只管**敲什么命令**。
 
 ---
@@ -12,10 +12,10 @@ cd /d/2026/raglite-main
 
 # Python 与包
 .venv/Scripts/python.exe -V                          # 期望 3.11.9
-.venv/Scripts/python.exe -c "import raglite; print('raglite ok')"
+.venv/Scripts/python.exe -c "import weknow; print('weknow ok')"
 
 # CLI 是否可用
-.venv/Scripts/raglite.exe --help
+.venv/Scripts/weknow.exe --help
 ```
 
 三条都通过就可以往下走。**注意用 `.venv/Scripts/python.exe`，不要用裸 `python`** —— 系统的 3.13 装了也没用。
@@ -66,11 +66,11 @@ EOF
 
 这是最需要处理的情况。三条路：
 
-| 路 | 做法 | 代价 |
-|---|---|---|
-| C1 **补 embedding**（推荐） | 去 LLM 厂商控制台开通 embedding，填进 `RAG_EMBED_MODEL` | 通常同 key 通用 |
-| C2 **加本地 embedding 服务** | 照 1.3 起 ollama，把 `OPENAI_API_BASE` 指向它 | 需两个端点，见 §1.5 |
-| C3 **纯 BM25 模式** | 完全不建向量，见 §4 | 无语义召回 |
+| 路                       | 做法                                           | 代价           |
+| ----------------------- | -------------------------------------------- | ------------ |
+| C1 **补 embedding**（推荐）  | 去 LLM 厂商控制台开通 embedding，填进 `RAG_EMBED_MODEL` | 通常同 key 通用   |
+| C2 **加本地 embedding 服务** | 照 1.3 起 ollama，把 `OPENAI_API_BASE` 指向它       | 需两个端点，见 §1.5 |
+| C3 **纯 BM25 模式**        | 完全不建向量，见 §4                                  | 无语义召回        |
 
 ### 1.5 LLM 与 embedding 在不同端点
 
@@ -127,7 +127,7 @@ print('embedding 维度 =', len(r.data[0].embedding))
 # 解析自检
 .venv/Scripts/python.exe -c "
 from pathlib import Path
-from raglite import parse_document, parser_report
+from weknow import parse_document, parser_report
 import json
 print(json.dumps(parser_report(), ensure_ascii=False, indent=2))
 d = parse_document(Path('tests/NVIDIA-report.pdf'))
@@ -144,7 +144,7 @@ print('engine =', d.engine, '| chars =', len(d.content))
 
 ```bash
 # CLI 自带的 bench 子命令（用的是 ir_datasets + ir_measures）
-.venv/Scripts/raglite.exe bench --dataset beir/nfcorpus/test --measure nDCG@10
+.venv/Scripts/weknow.exe bench --dataset beir/nfcorpus/test --measure nDCG@10
 ```
 
 ---
@@ -155,7 +155,7 @@ print('engine =', d.engine, '| chars =', len(d.content))
 
 ```bash
 .venv/Scripts/python.exe -c "
-from raglite import RAGLiteConfig, keyword_search, retrieve_chunks, add_context, rag
+from weknow import RAGLiteConfig, keyword_search, retrieve_chunks, add_context, rag
 import os
 
 # 库里已有 chunk 时才能这么用；建库见下方脚本
@@ -190,7 +190,7 @@ if chunks:
 ```bash
 .venv/Scripts/python.exe -c "
 import os
-from raglite import RAGLiteConfig, Document, insert_documents, rag
+from weknow import RAGLiteConfig, Document, insert_documents, rag
 
 config = RAGLiteConfig(
     db_url=os.environ.get('RAG_DB_URL', 'duckdb:///weknow.db'),
@@ -215,7 +215,7 @@ for tok in rag([{'role': 'user', 'content': 'E 和 mc^2 是什么关系？'}], c
 .venv/Scripts/python.exe -c "
 import os
 from dataclasses import replace
-from raglite import RAGLiteConfig, Document, insert_documents, rag, routed_search
+from weknow import RAGLiteConfig, Document, insert_documents, rag, routed_search
 
 config = replace(
     RAGLiteConfig(
@@ -245,7 +245,7 @@ for tok in rag([{'role': 'user', 'content': 'E 和 mc^2 是什么关系？'}], c
 .venv/Scripts/python.exe -c "
 import os
 from pathlib import Path
-from raglite import RAGLiteConfig, Document, sync_documents
+from weknow import RAGLiteConfig, Document, sync_documents
 
 config = RAGLiteConfig(db_url='duckdb:///weknow.db',
                        llm='openai/' + os.environ['RAG_LLM_MODEL'],
@@ -262,33 +262,35 @@ print(sync_documents(docs, key='filename', config=config))
 
 ```bash
 # 顶层帮助（本机已修复：以前没装 llama_cpp 会直接崩）
-.venv/Scripts/raglite.exe --help
+.venv/Scripts/weknow.exe --help
 
 # 用参数覆盖端点
-.venv/Scripts/raglite.exe \
+.venv/Scripts/weknow.exe \
   --db-url duckdb:///weknow.db \
   --llm openai/qwen-plus \
   --embedder openai/text-embedding-v3 \
   bench --dataset beir/nfcorpus/test --measure nDCG@10
 
 # 装 MCP server 到 Claude Desktop
-.venv/Scripts/raglite.exe \
+.venv/Scripts/weknow.exe \
   --db-url duckdb:///weknow.db \
   --llm openai/qwen-plus \
   --embedder openai/text-embedding-v3 \
   mcp install
 
 # Chainlit 前端（需先 uv pip install chainlit）
-.venv/Scripts/raglite.exe --db-url duckdb:///weknow.db --llm openai/qwen-plus --embedder openai/text-embedding-v3 chainlit
+.venv/Scripts/weknow.exe --db-url duckdb:///weknow.db --llm openai/qwen-plus --embedder openai/text-embedding-v3 chainlit
 ```
 
 > `.env` 里的 `RAGLITE_*` 前缀变量会被 CLI 自动读取（`SettingsConfigDict(env_prefix="RAGLITE_", env_file=".env")`）：
+>
 > ```bash
 > echo 'RAGLITE_DB_URL=duckdb:///weknow.db' >> .env
 > echo 'RAGLITE_LLM=openai/qwen-plus' >> .env
 > echo 'RAGLITE_EMBEDDER=openai/text-embedding-v3' >> .env
 > ```
-> 三个都配好后，`raglite.exe` 不带参数即可。
+>
+> 三个都配好后，`weknow.exe` 不带参数即可。
 
 ---
 
@@ -304,21 +306,21 @@ uv pip install llama-cpp-python         # 本地 GGUF 模型
 uv pip install rapidocr-onnxruntime     # 离线 OCR（多模态②的 OCR 阶段）
 uv pip install mistralai                # Mistral OCR
 uv pip install chainlit                 # Chainlit 前端
-uv pip install 'raglite[multimodal]'    # 一次性装多模态
+uv pip install 'weknow[multimodal]'    # 一次性装多模态
 ```
 
 ---
 
 ## 8. 终端报错速查
 
-| 报错 | 原因 | 命令 |
-|---|---|---|
-| `No module named 'llama_cpp'` | 没显式传 `llm`/`embedder` | 配 `.env`（§1） |
-| `ProxyError` / 下载失败 | 默认 reranker 联网 | 传 `reranker=None` |
-| `KeyError: '--dataset'` | `bench_beir.py` 用位置参数 | `.venv/Scripts/python.exe bench_beir.py beir/nfcorpus/test` |
-| `No module named 'pip'` | 本机 venv 由 uv 建 | 用 `uv pip install` |
-| `raglite.exe --help` 崩溃 | **已在本次修复**（`_cli.py` 不再实例化 `RAGLiteConfig`） | 拉最新代码 |
-| embedding 维度对不上已有库 | 换过 embedder | 删库重建（`FLOAT[N]` 维度不可变） |
+| 报错                            | 原因                                          | 命令                                                          |
+| ----------------------------- | ------------------------------------------- | ----------------------------------------------------------- |
+| `No module named 'llama_cpp'` | 没显式传 `llm`/`embedder`                       | 配 `.env`（§1）                                                |
+| `ProxyError` / 下载失败           | 默认 reranker 联网                              | 传 `reranker=None`                                           |
+| `KeyError: '--dataset'`       | `bench_beir.py` 用位置参数                       | `.venv/Scripts/python.exe bench_beir.py beir/nfcorpus/test` |
+| `No module named 'pip'`       | 本机 venv 由 uv 建                              | 用 `uv pip install`                                          |
+| `weknow.exe --help` 崩溃       | **已在本次修复**（`_cli.py` 不再实例化 `RAGLiteConfig`） | 拉最新代码                                                       |
+| embedding 维度对不上已有库            | 换过 embedder                                 | 删库重建（`FLOAT[N]` 维度不可变）                                      |
 
 ---
 
@@ -328,8 +330,8 @@ uv pip install 'raglite[multimodal]'    # 一次性装多模态
 cd /d/2026/raglite-main
 
 # 自检
-.venv/Scripts/raglite.exe --help
-.venv/Scripts/python.exe -c "from raglite import parser_report; print(parser_report())"
+.venv/Scripts/weknow.exe --help
+.venv/Scripts/python.exe -c "from weknow import parser_report; print(parser_report())"
 
 # 配置
 vi .env                                  # 按 §1 填

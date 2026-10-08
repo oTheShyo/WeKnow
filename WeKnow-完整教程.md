@@ -1,6 +1,6 @@
 # WeKnow 完整教程（附源码）
 
-> 本教程覆盖**本仓库**（`D:/2026/raglite-main`，代号 WeKnow）的全部能力：上游 RAGLite 1.1.1 的检索内核 + 本项目二次开发的 **8 项工程扩展**，每一节都给出 `src/raglite/` 里的真实源码摘录与可运行示例。  
+> 本教程覆盖**本仓库**（`D:/2026/raglite-main`，代号 WeKnow）的全部能力：上游 RAGLite 1.1.1 的检索内核 + 本项目二次开发的 **8 项工程扩展**，每一节都给出 `src/weknow/` 里的真实源码摘录与可运行示例。  
 > 定位：读完能独立跑通「解析 → 切分 → 建库 → 增量 → 检索 → 重排 → 生成 → 评测」全链路，并说清每个设计决策与它的边界。
 >
 > 配套文档：`图增强检索-BEIR评测.md`（图增强的标准基准消融）、`图增强检索-AB评测.md`（自建题集的 A/B）、`复现指南-实测数据.md`（数字怎么来的）、`个人知识库RAG-简历.md`（简历口径）。
@@ -76,11 +76,11 @@ WeKnow 是一个**进程内、可嵌入、零外部服务**的个人知识库 RA
 ### 1.1 用 pip（只用上游功能）
 
 ```bash
-pip install raglite                 # 核心
-pip install raglite[chainlit]       # 可选：ChatGPT 风格前端
-pip install raglite[pandoc]         # 可选：pandoc 解析引擎
-pip install raglite[ragas]          # 可选：RAGAS 评测
-pip install 'raglite[multimodal]'   # 可选：OCR + VLM 多模态
+pip install weknow                 # 核心
+pip install weknow[chainlit]       # 可选：ChatGPT 风格前端
+pip install weknow[pandoc]         # 可选：pandoc 解析引擎
+pip install weknow[ragas]          # 可选：RAGAS 评测
+pip install 'weknow[multimodal]'   # 可选：OCR + VLM 多模态
 ```
 
 ### 1.2 本仓库（含扩展与基准脚本）
@@ -223,7 +223,7 @@ uv sync --python 3.11                                             # 别用 3.13�
 ## 3. 五分钟最小示例
 
 ```python
-from raglite import RAGLiteConfig, Document, insert_documents, rag
+from weknow import RAGLiteConfig, Document, insert_documents, rag
 
 # 离线友好：显式给字符串模型标识 + 关掉会联网下载的重排器
 config = RAGLiteConfig(
@@ -258,7 +258,7 @@ for update in rag(messages, config=config):     # 流式生成
 
 ```python
 from pathlib import Path
-from raglite import parse_document, parser_report, supported_file_types, RAGLiteConfig
+from weknow import parse_document, parser_report, supported_file_types, RAGLiteConfig
 
 # 1) 看每个引擎是否可用、覆盖哪些格式、缺依赖怎么装
 import json; print(json.dumps(parser_report(), ensure_ascii=False, indent=2))
@@ -272,12 +272,12 @@ print(parsed.engine, parsed.file_type, len(parsed.content))
 print([img.name for img in parsed.images])
 
 # 4) 强制使用某个引擎（不可用/不支持/运行时报错 → 自动回退 builtin）
-from raglite import MultimodalConfig
+from weknow import MultimodalConfig
 parsed = parse_document(Path("scan.pdf"), engine="multimodal",
                         config=RAGLiteConfig(document_processor=MultimodalConfig()))
 ```
 
-**源码**（`src/raglite/_parsers.py`）—— 三级回退是本扩展的核心：
+**源码**（`src/weknow/_parsers.py`）—— 三级回退是本扩展的核心：
 
 ```python
 class ParserEngineRegistry:
@@ -341,7 +341,7 @@ def _preferred_parser_engine(doc_path: Path, config: RAGLiteConfig) -> str | Non
 **用法**：
 
 ```python
-from raglite import RAGLiteConfig, MultimodalConfig, Document, insert_documents
+from weknow import RAGLiteConfig, MultimodalConfig, Document, insert_documents
 
 # 全离线：RapidOCR（ONNX，本地）+ 不启用 VLM
 cfg = RAGLiteConfig(
@@ -359,7 +359,7 @@ docs = [Document.from_path("scanned-report.pdf")]
 insert_documents(docs, config=cfg)     # PDF 会先逐页栅格化，再跑 OCR + VLM
 ```
 
-**源码**（`src/raglite/_multimodal.py` 的引擎解析）—— 两阶段彼此独立降级：
+**源码**（`src/weknow/_multimodal.py` 的引擎解析）—— 两阶段彼此独立降级：
 
 ```python
 def resolve_ocr_engine(processor_config: MultimodalConfig) -> OCREngine:
@@ -471,7 +471,7 @@ statement = (select(top_vectors.c.chunk_id, sim_norm)
 **用法**：
 
 ```python
-from raglite import sync_documents, diff_documents
+from weknow import sync_documents, diff_documents
 
 # 只比对、不动索引（返回 new / unchanged / changed）
 report = diff_documents(docs, config=config)
@@ -526,7 +526,7 @@ if config.graph.enabled and (report["inserted"] or report["deleted"]):
 
 ```python
 from dataclasses import replace
-from raglite import RAGLiteConfig, search_and_rerank_chunk_spans, hybrid_search
+from weknow import RAGLiteConfig, search_and_rerank_chunk_spans, hybrid_search
 
 config = replace(config, search_method=search_and_rerank_chunk_spans)  # 检索+重排+span 一步到位
 # 或仅混合检索（向量 + 关键词 + 可选图路）：
@@ -597,7 +597,7 @@ return chunks, None
 
 ```python
 from dataclasses import replace
-from raglite import route_search_method, routed_search, RAGLiteConfig
+from weknow import route_search_method, routed_search, RAGLiteConfig
 
 print(route_search_method('"exact phrase"').__name__)   # keyword_search
 print(route_search_method("什么是图增强检索").__name__)  # hybrid_search
@@ -610,7 +610,7 @@ config = replace(config, search_router=True)             # 让管线自动用 ro
 
 ```python
 def route_search_method(query: str, *, config=None) -> BasicSearchMethod:
-    from raglite._search import hybrid_search, keyword_search
+    from weknow._search import hybrid_search, keyword_search
     if _QUOTED_PHRASE.search(query):          # ① 引号短语 = 精确匹配意图
         return keyword_search
     tokens = _tokenize(query)
@@ -630,7 +630,7 @@ def route_search_method(query: str, *, config=None) -> BasicSearchMethod:
 
 ```python
 from dataclasses import replace
-from raglite import search_with_secondary_retrieval, RAGLiteConfig
+from weknow import search_with_secondary_retrieval, RAGLiteConfig
 
 config = replace(config, search_method=search_with_secondary_retrieval,
                  secondary_retrieval=True, rerank_confidence_threshold=0.3,
@@ -729,7 +729,7 @@ class RetrievalCache:
 
 ```python
 from dataclasses import replace
-from raglite import RAGLiteConfig, GraphConfig, build_graph, graph_search, query_knowledge_graph
+from weknow import RAGLiteConfig, GraphConfig, build_graph, graph_search, query_knowledge_graph
 
 config = replace(config, graph=GraphConfig(
     enabled=True,
@@ -815,7 +815,7 @@ ordered = [c for c in sorted(scores, key=lambda c: (-scores[c], c)) if c not in 
 **自适应**（让 LLM 自己决定检索与否，最多 `agentic_iterations` 次）：
 
 ```python
-from raglite import rag
+from weknow import rag
 messages = [{"role": "user", "content": "狭义相对论讲了什么？"}]
 chunk_spans = []
 for update in rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config):
@@ -825,7 +825,7 @@ for update in rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config
 **可编程**（手动控制每一步）：
 
 ```python
-from raglite import retrieve_context, add_context, rag
+from weknow import retrieve_context, add_context, rag
 chunk_spans = retrieve_context(user_prompt, num_chunks=5, metadata_filter={"author": "Einstein"}, config=config)
 messages = [add_context(user_prompt, context=chunk_spans, config=config)]
 for update in rag(messages, config=config):
@@ -863,7 +863,7 @@ def bleu_n(reference: str, hypothesis: str, *, max_n: int = 4) -> float:
 用法（可传预生成答案，也可给 config 让它现场生成）：
 
 ```python
-from raglite import evaluate_generation, rouge_l_f1, bleu_n
+from weknow import evaluate_generation, rouge_l_f1, bleu_n
 report = evaluate_generation(
     [("E=mc^2 的含义？", "质能等价，质量与能量可相互转换。")],
     answers=["质量与能量等价。"],   # 省略则需 config 里的 LLM 现场生成
@@ -929,7 +929,7 @@ print(report["mean_rouge_l"], report["mean_bleu"])
 
 | 字段                                                                       | 默认                                      | 含义                                      |
 | ------------------------------------------------------------------------ | --------------------------------------- | --------------------------------------- |
-| `db_url`                                                                 | `duckdb:///~/.cache/raglite/raglite.db` | DuckDB / PostgreSQL 连接串                 |
+| `db_url`                                                                 | `duckdb:///~/.cache/weknow/weknow.db` | DuckDB / PostgreSQL 连接串                 |
 | `llm` / `embedder`                                                       | 本地 Qwen3 / bge-m3 GGUF                  | **务必显式传字符串**，避免惰性导入 llama_cpp           |
 | `chunk_max_size`                                                         | 2048                                    | 单 chunk 最大字符数                           |
 | `document_processor`                                                     | `None`                                  | `MultimodalConfig` 或 `MistralOCRConfig` |
@@ -1007,14 +1007,14 @@ uv run poe test     # pytest
 
 | 文件                                 | 作用               |
 | ---------------------------------- | ---------------- |
-| `src/raglite/_parsers.py`          | 解析引擎注册表（扩展 #1）   |
-| `src/raglite/_multimodal.py`       | OCR + VLM（扩展 #2） |
-| `src/raglite/_iterative_search.py` | 二次检索（扩展 #3）      |
-| `src/raglite/_incremental.py`      | 增量索引（扩展 #4）      |
-| `src/raglite/_router.py`           | 意图路由（扩展 #5）      |
-| `src/raglite/_cache.py`            | 分层缓存（扩展 #6）      |
-| `src/raglite/_eval_generation.py`  | 生成端评估（扩展 #7）     |
-| `src/raglite/_graph.py`            | 图增强（扩展 #8）       |
+| `src/weknow/_parsers.py`          | 解析引擎注册表（扩展 #1）   |
+| `src/weknow/_multimodal.py`       | OCR + VLM（扩展 #2） |
+| `src/weknow/_iterative_search.py` | 二次检索（扩展 #3）      |
+| `src/weknow/_incremental.py`      | 增量索引（扩展 #4）      |
+| `src/weknow/_router.py`           | 意图路由（扩展 #5）      |
+| `src/weknow/_cache.py`            | 分层缓存（扩展 #6）      |
+| `src/weknow/_eval_generation.py`  | 生成端评估（扩展 #7）     |
+| `src/weknow/_graph.py`            | 图增强（扩展 #8）       |
 | `bench_beir_graph.py`              | BEIR 六臂消融        |
 | `bench_graph_ab.py`                | 自建题集 A/B         |
 | `bench_results.json`               | 唯一落盘延迟来源         |
@@ -1043,4 +1043,4 @@ uv run python fill_and_search.py
 
 ---
 
-*本教程所有源码摘录均取自 `src/raglite/` 当前实现；所有性能/效果数字均标注口径，未取数的一律标注「未取数」，不做未经验证的声明。*
+*本教程所有源码摘录均取自 `src/weknow/` 当前实现；所有性能/效果数字均标注口径，未取数的一律标注「未取数」，不做未经验证的声明。*

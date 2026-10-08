@@ -1,6 +1,6 @@
 # WeKnow 扩展 #5：多模态文档处理（OCR + VLM）
 
-> 在 RAGLite 内核之上自研的文档处理器。新增 `src/raglite/_multimodal.py`（672 行）+
+> 在 RAGLite 内核之上自研的文档处理器。新增 `src/weknow/_multimodal.py`（672 行）+
 > `MultimodalConfig` + 22 个单测（280 行）；一次独立提交。
 > 目标：让**图片与扫描版 PDF** 与文本知识源共享同一套「三层切分 → 混合建库 → 重排」检索链路。
 
@@ -71,13 +71,13 @@
 **安装（可选）**
 
 ```bash
-pip install 'raglite[multimodal]'   # rapidocr-onnxruntime + pymupdf + pillow + pytesseract
+pip install 'weknow[multimodal]'   # rapidocr-onnxruntime + pymupdf + pillow + pytesseract
 ```
 
 **A. 纯离线：只有 OCR（零网络、零密钥）**
 
 ```python
-from raglite import Document, RAGLiteConfig, MultimodalConfig, insert_documents
+from weknow import Document, RAGLiteConfig, MultimodalConfig, insert_documents
 
 config = RAGLiteConfig(
     document_processor=MultimodalConfig(ocr_engine="auto", vlm=None),
@@ -117,7 +117,7 @@ MultimodalConfig(ocr_engine="none", vlm="openai/gpt-4o-mini")
 **E. 单图快速提取（不入库，想看提取质量）**
 
 ```python
-from raglite import extract_image, MultimodalConfig
+from weknow import extract_image, MultimodalConfig
 
 extraction = extract_image(open("chart.png", "rb").read(), processor_config=MultimodalConfig())
 print(extraction.ocr_text)      # 图内文字
@@ -164,7 +164,7 @@ print(extraction.to_markdown()) # 实际入库的 Markdown
 
 | 待测项 | 前置条件 |
 |---|---|
-| OCR 字符准确率 | `pip install 'raglite[multimodal]'`（RapidOCR 首次会拉 ONNX 模型） |
+| OCR 字符准确率 | `pip install 'weknow[multimodal]'`（RapidOCR 首次会拉 ONNX 模型） |
 | 含 VLM 的端到端 P50 / 首字延迟 | 视觉模型端点（云端 key 或本地 Ollama） |
 | 图文问答准确率（改造 `gen_bench.py` 加图问） | 同上 |
 | 多模态入库吞吐（页/秒） | 同上 |

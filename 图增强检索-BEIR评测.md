@@ -53,7 +53,7 @@ DuckDB 上的 chunk-chunk 投影是**实体二部图的笛卡尔投影**，边�
 
 ## 2. 为跑通这次评测修掉的东西
 
-图路此前**在真实数据集上从未跑完过**，本次评测先把三处阻塞修掉（都在 `src/raglite/_graph.py`）：
+图路此前**在真实数据集上从未跑完过**，本次评测先把三处阻塞修掉（都在 `src/weknow/_graph.py`）：
 
 | 问题 | 修复前 | 修复后 | 做法 |
 |---|---|---|---|
@@ -282,5 +282,5 @@ cd D:/2026/raglite-main
 | `bench_chunk_graph_density.py` | 投影上限 → 边数 / 构建耗时 / 查询延迟的关系 |
 | `bench_chunk_neighbors_sql.py` | 四种邻接 SQL 形状的等价性验证 |
 | `bench_graph_probe.py` / `bench_graph_query_profile.py` | 建图分阶段计时与查询侧 profile |
-| `src/raglite/_graph.py` | 图构建/查询的性能修复 |
-| `src/raglite/_config.py` | 新增 `GraphConfig.chunk_neighbor_limit` |
+| `src/weknow/_graph.py` | 图构建/查询的性能修复 |
+| `src/weknow/_config.py` | 新增 `GraphConfig.chunk_neighbor_limit` |

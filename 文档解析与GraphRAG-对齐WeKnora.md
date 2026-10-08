@@ -30,7 +30,7 @@
 
 `_markdown.document_to_markdown()` 里是一串后缀分支：`.pdf` 走 `pdftext`，`.md/.txt` 直接 `read_text()`，其余交给 `pypandoc`（没装 pandoc 就抛错）。问题有三个：**加一种格式要改主流程**、**引擎可用性没有探测与提示**、**图片在解析阶段就被丢弃**（多模态扩展只能在 `document_processor` 里另起炉灶）。
 
-### 2.2 实现：`src/raglite/_parsers.py`（新建，1129 行）
+### 2.2 实现：`src/weknow/_parsers.py`（新建，1129 行）
 
 WeKnora 的 `docreader/parser/registry.py` 是 `(engine, file_type) -> parser class` 的二维字典 + 回退。RAGLite 侧照此建模：
 
@@ -89,8 +89,8 @@ return parse_document(doc_path, engine=engine, config=config).content
 
 ```
 builtin     ✔ 28 类   -
-multimodal  ✔ 9 类    （已装 PyMuPDF；完整能力需 pip install 'raglite[multimodal]'）
-pandoc      ✘ 17 类   pip install 'raglite[pandoc]'
+multimodal  ✔ 9 类    （已装 PyMuPDF；完整能力需 pip install 'weknow[multimodal]'）
+pandoc      ✘ 17 类   pip install 'weknow[pandoc]'
 markitdown  ✘ 12 类   pip install markitdown
 mistral     ✘ 10 类   需要 mistral-ocr extra + MISTRAL_API_KEY
 ```
@@ -141,7 +141,7 @@ mistral     ✘ 10 类   需要 mistral-ocr extra + MISTRAL_API_KEY
 | `tests/test_parsers.py` | **19 passed** |
 | `tests/test_graph.py` | **43 passed**（含 10 个新增的 WeKnora 对齐用例） |
 | 离线回归子集（parsers/graph/markdown/multimodal/mistral_ocr/metadata_filter/retrieval_extensions/split/import/lazy_llama） | **124 passed, 1 skipped** |
-| `mypy src/raglite` | **Success: no issues found in 33 source files** |
+| `mypy src/weknow` | **Success: no issues found in 33 source files** |
 | `ruff check`（本次改动的 9 个文件） | 与 HEAD 基线对比**无新增规则类别**（基线 52 → 当前 49，仅魔法值类略有增加，与既有 `_graph.py` 风格一致） |
 
 `test_parsers.py` 的 fixture 是**真实的最小 OOXML/OCF 容器**（内联 1×1 PNG），不是 mock：docx 测标题/列表/表格/内嵌图，xlsx 测逐 sheet + sharedStrings，pptx 测逐 slide，epub 测 spine 顺序 + Dublin Core 标题，pdf 用仓库自带的 `specrel.pdf` 断言起首是 `# ON THE ELECTRODYNAMICS OF MOVING`。注册表回退三条路径（引擎无此类型 / 引擎未安装 / 引擎运行时抛 `ParserFallbackError`）各有独立用例。

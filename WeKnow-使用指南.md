@@ -9,7 +9,7 @@
 
 | 项 | 状态 |
 |---|---|
-| `.venv` | ✅ Python 3.11.9，已装 `raglite`（可编辑安装） |
+| `.venv` | ✅ Python 3.11.9，已装 `weknow`（可编辑安装） |
 | 已装 | duckdb · sqlmodel · litellm · rerankers · flashrank · pymupdf · scipy · numpy · langdetect · mcp · **ir_datasets · ir_measures** |
 | **未装** | `llama_cpp`（本地模型）· `rapidocr_onnxruntime` / `pytesseract`（OCR）· `mistralai`（Mistral OCR）· `chainlit`（前端）· `PIL` |
 | 已有数据库 | `bench_data.db`（1 文档 / 1000 chunk / 10000 向量，10k×1536） |
@@ -37,7 +37,7 @@ cd /d/2026/raglite-main
 
 # ① 解析引擎可用性报告
 .venv/Scripts/python.exe -c "
-from raglite import parser_report, supported_file_types
+from weknow import parser_report, supported_file_types
 import json
 print(json.dumps(parser_report(), ensure_ascii=False, indent=2))
 print('builtin 覆盖：', sorted(supported_file_types()))
@@ -60,7 +60,7 @@ mistral     | available = False | types = 11
 # ② 解析一个真实文档（用仓库自带的测试 PDF）
 .venv/Scripts/python.exe -c "
 from pathlib import Path
-from raglite import parse_document
+from weknow import parse_document
 d = parse_document(Path('tests/NVIDIA-report.pdf'))
 print('engine =', d.engine, '| file_type =', d.file_type)
 print('前 200 字：', d.content[:200].replace(chr(10),' '))
@@ -128,7 +128,7 @@ RAG_EMBED_MODEL=<嵌入模型名>
 
 ```bash
 .venv/Scripts/python.exe -c "
-from raglite import RAGLiteConfig, Document, insert_documents, rag
+from weknow import RAGLiteConfig, Document, insert_documents, rag
 
 config = RAGLiteConfig(
     db_url='duckdb:///weknow.db',
@@ -173,7 +173,7 @@ for tok in rag([{'role':'user','content':'E 和 mc^2 是什么关系？'}], conf
 
 ```python
 from dataclasses import replace
-from raglite import search_and_rerank_chunk_spans
+from weknow import search_and_rerank_chunk_spans
 
 config = replace(config, search_method=search_and_rerank_chunk_spans)
 ```
@@ -183,7 +183,7 @@ config = replace(config, search_method=search_and_rerank_chunk_spans)
 ```python
 # 混合检索 + 重排 + 二次检索 + 缓存 + 意图路由（推荐生产配置）
 from dataclasses import replace
-from raglite import RAGLiteConfig, cached_hybrid_search, routed_search
+from weknow import RAGLiteConfig, cached_hybrid_search, routed_search
 
 config = replace(
     RAGLiteConfig(db_url='duckdb:///weknow.db', llm='openai/gpt-4o-mini',
@@ -195,7 +195,7 @@ config = replace(
 )
 
 # ④ 增量同步（替代全量 insert）
-from raglite import Document, sync_documents
+from weknow import Document, sync_documents
 docs = [Document.from_path(p) for p in ['a.pdf', 'b.docx']]
 print(sync_documents(docs, key='filename', config=config))
 ```
@@ -224,7 +224,7 @@ uv pip install mistralai && export MISTRAL_API_KEY=...
 uv pip install chainlit
 
 # 全装
-uv pip install 'raglite[multimodal]'
+uv pip install 'weknow[multimodal]'
 ```
 
 > ⚠️ 别用 `pip install`（本机 `.venv` 无 pip），也别装全局。
@@ -235,19 +235,19 @@ uv pip install 'raglite[multimodal]'
 
 ```bash
 # 查看 CLI
-.venv/Scripts/python.exe -m raglite --help
+.venv/Scripts/python.exe -m weknow --help
 # 或装好后直接用入口脚本
-.venv/Scripts/raglite.exe --help
+.venv/Scripts/weknow.exe --help
 
 # 装 MCP server 到 Claude Desktop（需已装 Claude 桌面版）
-.venv/Scripts/raglite.exe \
+.venv/Scripts/weknow.exe \
   --db-url duckdb:///weknow.db \
   --llm openai/gpt-4o-mini \
   --embedder openai/text-embedding-3-small \
   mcp install
 
 # Chainlit 前端（需装 chainlit）
-.venv/Scripts/raglite.exe --db-url duckdb:///weknow.db --llm ... --embedder ... chainlit
+.venv/Scripts/weknow.exe --db-url duckdb:///weknow.db --llm ... --embedder ... chainlit
 ```
 
 ---
@@ -273,7 +273,7 @@ cd /d/2026/raglite-main
 .venv/Scripts/python.exe -V                    # 3.11.9
 
 # 自检（无需模型）
-.venv/Scripts/python.exe -c "from raglite import parser_report; print(parser_report())"
+.venv/Scripts/python.exe -c "from weknow import parser_report; print(parser_report())"
 .venv/Scripts/python.exe bench_beir.py --dataset beir/nfcorpus/test
 
 # 端到端（需 .env）
