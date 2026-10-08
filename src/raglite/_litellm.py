@@ -37,6 +37,13 @@ from raglite._lazy_llama import (
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
 litellm.suppress_debug_info = True
 os.environ["LITELLM_LOG"] = "WARNING"
+# Do not block startup on LiteLLM's remote model cost map. By default LiteLLM fetches
+# https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json on
+# first use and retries three times with exponential backoff. On a network where that host is
+# unreachable this adds tens of seconds to the first call for no benefit, because we only need the
+# bundled map (and we register custom models ourselves, see register_model_metadata). Set the
+# environment variable before importing anything that reads it, and let an explicit user override win.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("flashrank").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -328,16 +335,97 @@ if not any(provider["provider"] == "llama-cpp-python" for provider in litellm.cu
     custom_llm_setup()  # type: ignore[no-untyped-call]
 
 
+def register_model_metadata(model: str, **metadata: Any) -> None:
+    """Register capability metadata for a model that LiteLLM does not know about.
+
+    LiteLLM resolves model capabilities (context size, function calling, embedding dimension)
+    from its bundled cost map. Any third-party or self-hosted model that is not in that map
+    silently loses those capabilities, which makes RAGLite refuse to use it — e.g.
+    `_get_tools` raises "You must use an LLM that supports function calling" even when the
+    served model does support it.
+
+    This lets you declare the metadata yourself. It is safe to call repeatedly; later calls
+    merge into the existing entry.
+
+    Example:
+        register_model_metadata(
+            "openai/qwen3.8-chat", max_tokens=131072, supports_function_calling=True
+        )
+        register_model_metadata(
+            "dashscope/qwen3.7-text-embedding-flash", output_vector_size=1024, mode="embedding"
+        )
+    """
+    entry: dict[str, Any] = {"input_cost_per_token": 0.0, "output_cost_per_token": 0.0}
+    entry.update(metadata)
+    entry.setdefault("mode", "completion")
+    # Derive the provider from the "provider/model" prefix so LiteLLM's lookups line up.
+    entry.setdefault("litellm_provider", model.split("/", 1)[0] if "/" in model else "openai")
+    merged = dict(litellm.model_cost.get(model) or {})
+    merged.update(entry)
+    litellm.register_model({model: merged})  # type: ignore[attr-defined]
+    # The model info lookups are cached, so drop the cache to make the new entry visible.
+    get_model_info.cache_clear()  # type: ignore[attr-defined]
+
+
+def autoregister_configured_model(config: RAGLiteConfig) -> None:
+    """Best-effort registration of the configured LLM and embedder with LiteLLM.
+
+    Called by the retrieval and generation entry points so that custom endpoints keep their
+    declared capabilities (context size, function calling, embedding dimension) instead of
+    falling back to conservative defaults. Only fills in what LiteLLM is missing; a model that
+    LiteLLM already knows about is left untouched.
+    """
+    for model, defaults in (
+        (
+            config.llm,
+            {
+                "max_tokens": getattr(config, "llm_context_size", None),
+                "supports_function_calling": True,
+                "supports_tool_choice": True,
+            },
+        ),
+        (
+            config.embedder,
+            {
+                "output_vector_size": getattr(config, "embedder_dimension", None),
+                "mode": "embedding",
+            },
+        ),
+    ):
+        specs = {k: v for k, v in defaults.items() if v is not None}
+        if not specs:
+            continue
+        with contextlib.suppress(Exception):
+            if not _model_is_known(model):
+                register_model_metadata(model, **specs)
+
+
+def _model_is_known(model: str) -> bool:
+    """Return whether LiteLLM can resolve metadata for `model` without raising."""
+    try:
+        get_model_info(model)
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
 @cache
 def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
     """Get the context size for the configured LLM."""
+    # Register the configured model so LiteLLM reports its declared capabilities.
+    autoregister_configured_model(config)
     # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
     # to date by loading that LLM.
     if config.llm.startswith("llama-cpp-python"):
         _ = LlamaCppPythonLLM.llm(config.llm)
-    # Attempt to read the context size from LiteLLM's model info.
-    model_info = get_model_info(config.llm)
-    max_tokens = model_info.get("max_tokens")
+    # Attempt to read the context size from LiteLLM's model info. LiteLLM only knows this for
+    # models in its bundled cost map, so third-party or self-hosted models (e.g.
+    # "openai/qwen3.8-chat" served from a private gateway, or "dashscope/<new-model>") raise here.
+    # That is expected: fall through to the configurable default below.
+    max_tokens: Any = None
+    with contextlib.suppress(Exception):
+        model_info = get_model_info(config.llm)
+        max_tokens = model_info.get("max_tokens")
     if isinstance(max_tokens, int) and max_tokens > 0:
         return max_tokens
     # Fall back to a default context size if the model info is not available.
@@ -354,13 +442,21 @@ def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
 @cache
 def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
     """Get the embedding dimension for the configured embedder."""
+    # Register the configured models first, so that a declared `embedder_dimension` is honoured
+    # instead of falling through to the network probe below.
+    autoregister_configured_model(config)
     # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
     # to date by loading that LLM.
     if config.embedder.startswith("llama-cpp-python"):
         _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
-    # Attempt to read the embedding dimension from LiteLLM's model info.
-    model_info = get_model_info(config.embedder)
-    embedding_dim = model_info.get("output_vector_size")
+    # Attempt to read the embedding dimension from LiteLLM's model info. LiteLLM only knows the
+    # output vector size for models in its bundled cost map, so third-party or self-hosted models
+    # (e.g. "dashscope/qwen3.7-text-embedding-flash" or "openai/<custom-model>") raise here.
+    # That is expected: fall through to the empirical probe below.
+    embedding_dim: Any = None
+    with contextlib.suppress(Exception):
+        model_info = get_model_info(config.embedder)
+        embedding_dim = model_info.get("output_vector_size")
     if isinstance(embedding_dim, int) and embedding_dim > 0:
         return embedding_dim
     # If that fails, fall back to embedding a single sentence and reading its embedding dimension.

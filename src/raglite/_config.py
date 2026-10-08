@@ -275,3 +275,11 @@ class RAGLiteConfig:
     # Retrieval result cache: TTL in seconds and max number of cached entries.
     retrieval_cache_ttl: float = 300.0
     retrieval_cache_max_size: int = 256
+    # Model capability declarations for models that LiteLLM does not know about (third-party
+    # gateways, private deployments, brand-new models). LiteLLM resolves the context size, the
+    # function calling support, and the embedding dimension from its bundled cost map; models
+    # missing from that map silently lose those capabilities, which makes the agentic search tool
+    # unusable and forces a fallback embedding-dimension probe. Declaring them here restores the
+    # real capabilities. Leave as None to let LiteLLM decide (with the conservative fallback).
+    llm_context_size: int | None = None
+    embedder_dimension: int | None = None

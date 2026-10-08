@@ -15,6 +15,13 @@ from raglite import (
     insert_documents,
     rerank_chunks,
 )
+from raglite._dotenv import (
+    config_from_environ,
+    default_database_url,
+    default_embedder,
+    default_llm,
+    ensure_dotenv_loaded,
+)
 from raglite._markdown import document_to_markdown
 
 if TYPE_CHECKING:
@@ -30,13 +37,16 @@ async def start_chat() -> None:
     """Initialize the chat."""
     # Set tokenizers parallelism to avoid a deadlock warning.
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
-    # Add Chainlit settings with which the user can configure the RAGLite config.
-    default_config = RAGLiteConfig()
-    config = RAGLiteConfig(
-        db_url=os.environ.get("RAGLITE_DB_URL", default_config.db_url),
-        llm=os.environ.get("RAGLITE_LLM", default_config.llm),
-        embedder=os.environ.get("RAGLITE_EMBEDDER", default_config.embedder),
-    )
+    # Pick up the project `.env` so the frontend, the CLI, and the benchmark scripts agree. Chainlit
+    # does not read `.env` on its own, and without this the frontend silently falls back to the
+    # llama.cpp defaults and tries to download weights.
+    ensure_dotenv_loaded()
+    # Build the initial config from the environment. `config_from_environ` resolves LLM, embedder,
+    # and reranker without instantiating `RAGLiteConfig()` bare: those default factories import
+    # `llama_cpp` and download FlashRank weights, both of which fail on an offline machine and would
+    # make the frontend unusable. `disable_default_reranker` stops a missing `.env` from turning
+    # into a multi-hundred-megabyte download at startup; opt back in with `RAG_RERANKER=<model>`.
+    config = config_from_environ(disable_default_reranker=True)
     settings = await cl.ChatSettings(  # type: ignore[no-untyped-call]
         [
             TextInput(id="db_url", label="Database URL", initial=str(config.db_url)),
@@ -51,12 +61,15 @@ async def start_chat() -> None:
 @cl.on_settings_update  # type: ignore[arg-type]
 async def update_config(settings: cl.ChatSettings) -> None:
     """Update the RAGLite config."""
-    # Update the RAGLite config given the Chainlit settings.
-    config = RAGLiteConfig(
+    # The settings dialog only exposes the four fields above; everything else (reranker, parser
+    # engine, graph config, chunking, ...) is taken from the environment so that the frontend
+    # behaves exactly like the CLI. The dialog values win where they overlap.
+    config = config_from_environ(
         db_url=settings["db_url"],  # type: ignore[index]
         llm=settings["llm"],  # type: ignore[index]
         embedder=settings["embedder"],  # type: ignore[index]
         vector_search_query_adapter=settings["vector_search_query_adapter"],  # type: ignore[index]
+        disable_default_reranker=True,
     )
     cl.user_session.set("config", config)  # type: ignore[no-untyped-call]
     # Run a search to prime the pipeline if it's a local pipeline.

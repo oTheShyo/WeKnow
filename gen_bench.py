@@ -25,8 +25,39 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pathlib
 import statistics
 import time
+
+
+def _load_dotenv(path: str = ".env") -> None:
+    """把同目录下的 `.env` 载入 os.environ（不覆盖已存在的同名变量）。
+
+    只做最小解析：跳过空行与 `#` 注释，按第一个 `=` 切分，去掉两侧引号。
+    用 utf-8-sig 读取以吞掉可能的 BOM。装不装 python-dotenv 都能跑。
+    """
+    p = pathlib.Path(path)
+    if not p.is_file():
+        return
+    try:
+        text = p.read_text(encoding="utf-8-sig")
+    except OSError:
+        return
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key:
+            # 已 export 的真实环境变量优先，其次才是 .env 里未设过的
+            os.environ[key] = os.environ.get(key) or value
+
+
+_load_dotenv()
 
 # ---------------------------------------------------------------------------
 # 内置小知识库 + 评测集（答案均为文档中唯一可定位的 span，便于子串匹配判定）
@@ -64,12 +95,28 @@ def build_config() -> object:
             "缺少环境变量：需设置 OPENAI_API_BASE / OPENAI_API_KEY / "
             "RAG_LLM_MODEL / RAG_EMBED_MODEL（reranker 可选）。先跑 --check-env。"
         )
-    # litellm 用 "openai/<model>" + OPENAI_API_BASE/KEY 走兼容端点
+
+    def qualify(name: str) -> str:
+        """补 litellm provider 前缀；已带 `<provider>/` 的名字原样保留。
+
+        兼容两种写法：
+          - "qwen3.8-chat"                        -> "openai/qwen3.8-chat"（走 OPENAI_API_BASE）
+          - "dashscope/qwen3.7-text-embedding-flash" -> 原样（走 DASHSCOPE_API_KEY）
+        避免出现 "openai/dashscope/..." 这种双重前缀。
+        """
+        return name if "/" in name else f"openai/{name}"
+
     return RAGLiteConfig(
         db_url=os.environ.get("RAG_DB_URL", "duckdb:///gen_bench.db"),
-        llm=f"openai/{llm}",
-        embedder=f"openai/{embed}",
+        llm=qualify(llm),
+        embedder=qualify(embed),
         reranker=reranker,
+        # Both endpoints here serve models that LiteLLM's bundled cost map does not know about.
+        # Without these declarations LiteLLM reports no function-calling support for the LLM
+        # (which makes RAGLite refuse agentic search) and has to probe the embedding dimension
+        # over the network. Declaring them keeps the real capabilities.
+        llm_context_size=int(os.environ.get("RAG_LLM_CONTEXT_SIZE", "131072")),
+        embedder_dimension=int(os.environ.get("RAG_EMBEDDER_DIMENSION", "1024")),
     )
 
 
