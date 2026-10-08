@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from sqlmodel import Session, select
 
-from raglite import (
+from weknow import (
     CooccurrenceExtractor,
     Document,
     ExtractedEntity,
@@ -33,8 +33,8 @@ from raglite import (
     prune_graph,
     resolve_entity_extractor,
 )
-from raglite._database import Chunk, GraphChunk, create_database_engine
-from raglite._graph import title_in_query
+from weknow._database import Chunk, GraphChunk, create_database_engine
+from weknow._graph import title_in_query
 
 # Text markers that route a chunk to a scripted extraction.
 MARKER_A = "MARKER-A"
@@ -142,7 +142,7 @@ def test_llm_entity_extractor_forwards_config_and_prompt(
     test_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The configured prompt, model, temperature, and token cap reach the extraction call."""
-    import raglite._extract as extract_module
+    import weknow._extract as extract_module
 
     calls: list[dict[str, Any]] = []
 
@@ -301,7 +301,7 @@ def test_build_graph_retries_failed_chunks(
 
 def test_extract_one_degrades_and_warns() -> None:
     """A failing extractor yields None and a warning instead of propagating."""
-    import raglite._graph as graph_module
+    import weknow._graph as graph_module
 
     with pytest.warns(UserWarning, match="Graph extraction failed"):
         assert graph_module._extract_one(FailingExtractor(), "text") is None
@@ -573,7 +573,7 @@ def test_graph_search_ignores_dangling_chunk_links(
 
 def test_pending_graph_chunks(graph_config: RAGLiteConfig, seeded: dict[str, str]) -> None:
     """Every chunk is pending until it has been extracted, and none afterwards."""
-    from raglite._graph import pending_graph_chunks
+    from weknow._graph import pending_graph_chunks
 
     assert set(pending_graph_chunks(config=graph_config)) == set(seeded.values())
     build_graph(config=graph_config)
@@ -589,7 +589,7 @@ def test_hybrid_search_degrades_to_baseline_when_graph_is_empty(
     graph_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An empty graph ranking leaves the two-path result unchanged."""
-    import raglite._search as search_module
+    import weknow._search as search_module
 
     monkeypatch.setattr(
         search_module,
@@ -616,7 +616,7 @@ def test_hybrid_search_fuses_the_graph_ranking(
     graph_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The graph ranking participates in the fusion, and its weight is configurable."""
-    import raglite._search as search_module
+    import weknow._search as search_module
 
     monkeypatch.setattr(
         search_module, "vector_search", lambda query, **kwargs: (["v1", "v2"], [1.0, 0.9])
@@ -641,7 +641,7 @@ def test_hybrid_search_does_not_consult_the_graph_when_disabled(
     graph_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A disabled graph never runs a graph search."""
-    import raglite._search as search_module
+    import weknow._search as search_module
 
     monkeypatch.setattr(search_module, "vector_search", lambda query, **kwargs: (["v1"], [1.0]))
     monkeypatch.setattr(search_module, "keyword_search", lambda query, **kwargs: (["k1"], [1.0]))
@@ -663,8 +663,8 @@ def test_sync_documents_rebuilds_the_graph_for_the_delta(
     graph_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An enabled graph is rebuilt for the inserted documents only, and pruned first."""
-    import raglite._graph as graph_module
-    import raglite._incremental as incremental_module
+    import weknow._graph as graph_module
+    import weknow._incremental as incremental_module
 
     calls: list[dict[str, Any]] = []
 
@@ -675,7 +675,7 @@ def test_sync_documents_rebuilds_the_graph_for_the_delta(
         calls.append(kwargs)
         return {"chunks_extracted": 0}
 
-    monkeypatch.setattr("raglite._insert.insert_documents", lambda documents, **kwargs: None)
+    monkeypatch.setattr("weknow._insert.insert_documents", lambda documents, **kwargs: None)
     monkeypatch.setattr(
         incremental_module, "_existing_documents_by_key", lambda *args, **kwargs: {}
     )
@@ -695,13 +695,13 @@ def test_sync_documents_skips_the_graph_when_disabled(
     test_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A disabled graph is never built, so `sync_documents` stays cheap by default."""
-    import raglite._graph as graph_module
-    import raglite._incremental as incremental_module
+    import weknow._graph as graph_module
+    import weknow._incremental as incremental_module
 
     def unexpected(**kwargs: Any) -> Any:
         raise AssertionError("the graph must not be built when it is disabled")
 
-    monkeypatch.setattr("raglite._insert.insert_documents", lambda documents, **kwargs: None)
+    monkeypatch.setattr("weknow._insert.insert_documents", lambda documents, **kwargs: None)
     monkeypatch.setattr(
         incremental_module, "_existing_documents_by_key", lambda *args, **kwargs: {}
     )
@@ -721,7 +721,7 @@ def test_sync_documents_skips_the_graph_when_disabled(
 
 def test_pointwise_mutual_information_matches_the_definition() -> None:
     """PMI is `log2(P(x, y) / (P(x) * P(y)))`, clamped at zero."""
-    from raglite._graph import pointwise_mutual_information
+    from weknow._graph import pointwise_mutual_information
 
     # Together a quarter of the time, each a quarter of the time: four times more than chance,
     # which is two bits of mutual information.
@@ -736,8 +736,8 @@ def test_pointwise_mutual_information_matches_the_definition() -> None:
 
 def test_recompute_relation_weights_scales_pmi_and_strength(test_config: RAGLiteConfig) -> None:
     """The edge weight combines normalised PMI and the extractor's strength into 1-10."""
-    from raglite._database import GraphRelation
-    from raglite._graph import recompute_relation_weights
+    from weknow._database import GraphRelation
+    from weknow._graph import recompute_relation_weights
 
     extractor = ScriptedExtractor(
         {
@@ -787,7 +787,7 @@ def test_recompute_relation_weights_scales_pmi_and_strength(test_config: RAGLite
 
 def test_relation_strength_is_a_mean_over_the_chunks(test_config: RAGLiteConfig) -> None:
     """An incremental build folds a new mention into the mean strength instead of replacing it."""
-    from raglite._database import GraphRelation
+    from weknow._database import GraphRelation
 
     extractor = ScriptedExtractor(
         {
@@ -812,7 +812,7 @@ def test_relation_strength_is_a_mean_over_the_chunks(test_config: RAGLiteConfig)
 
 def test_extraction_prompt_carries_the_configured_types_and_examples() -> None:
     """WeKnora's `ExtractConfig` constraints are appended to the prompt when they are set."""
-    from raglite._graph import build_extraction_prompt
+    from weknow._graph import build_extraction_prompt
 
     plain = build_extraction_prompt(GraphConfig())
     assert "knowledge graph extractor" in plain
@@ -879,7 +879,7 @@ def test_hybrid_search_deduplicates_when_configured(
     graph_config: RAGLiteConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`deduplicate_seen_chunks` forwards what the other paths found to the graph search."""
-    import raglite._search as search_module
+    import weknow._search as search_module
 
     seen: list[Any] = []
 
@@ -904,7 +904,7 @@ def test_query_knowledge_graph_returns_the_neighbourhood(
     graph_config: RAGLiteConfig, seeded: dict[str, str]
 ) -> None:
     """The agent-facing tool returns the entities, their relations, and their chunks."""
-    from raglite._graph import query_knowledge_graph
+    from weknow._graph import query_knowledge_graph
 
     build_graph(config=graph_config)
     result = query_knowledge_graph("What did Einstein publish?", config=graph_config)
@@ -925,7 +925,7 @@ def test_query_knowledge_graph_is_a_two_hop_neighbourhood_on_request(
     graph_config: RAGLiteConfig, seeded: dict[str, str]
 ) -> None:
     """`neighbor_hops` widens the returned subgraph."""
-    from raglite._graph import query_knowledge_graph
+    from weknow._graph import query_knowledge_graph
 
     build_graph(config=graph_config)
     result = query_knowledge_graph("Einstein", neighbor_hops=2, config=graph_config)

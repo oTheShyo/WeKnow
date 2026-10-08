@@ -11,9 +11,9 @@ from zipfile import ZipFile
 
 import pytest
 
-from raglite._config import RAGLiteConfig
-from raglite._markdown import document_to_markdown
-from raglite._parsers import (
+from weknow._config import RAGLiteConfig
+from weknow._markdown import document_to_markdown
+from weknow._parsers import (
     BUILTIN_ENGINE,
     MULTIMODAL_ENGINE,
     BaseParser,
@@ -269,7 +269,7 @@ def test_unavailable_engine_falls_back_to_builtin() -> None:
 
 def test_parser_failure_falls_back_to_builtin(tmp_path: Any) -> None:
     """Test that an engine that fails at runtime degrades to the builtin engine."""
-    from raglite._parsers import ParserFallbackError
+    from weknow._parsers import ParserFallbackError
 
     class FailingParser(BaseParser):
         ENGINE: str = "failing"
@@ -428,8 +428,8 @@ def test_document_to_markdown_uses_the_registry(tmp_path: Any) -> None:
 
 def test_multimodal_engine_is_preferred_for_images() -> None:
     """Test that a configured multimodal processor selects the multimodal engine."""
-    from raglite._config import MultimodalConfig
-    from raglite._markdown import _preferred_parser_engine
+    from weknow._config import MultimodalConfig
+    from weknow._markdown import _preferred_parser_engine
 
     config = RAGLiteConfig(
         llm="gpt-4o-mini",

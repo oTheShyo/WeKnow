@@ -5,7 +5,7 @@ import json
 from sqlalchemy import column
 from sqlalchemy.dialects import postgresql
 
-from raglite._metadata_filter import build_metadata_filter_condition, build_metadata_filter_sql
+from weknow._metadata_filter import build_metadata_filter_condition, build_metadata_filter_sql
 
 
 def test_build_metadata_filter_condition_postgresql_multiple_values() -> None:

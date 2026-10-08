@@ -65,9 +65,9 @@ def install_engine(engine: Any) -> None:
     string-query pipeline, runs offline with no credentials. Ranking quality is meaningless here;
     only latency is measured.
     """
-    import raglite._database as db_module
-    import raglite._search as search_module
-    from raglite._database import ChunkEmbedding
+    import weknow._database as db_module
+    import weknow._search as search_module
+    from weknow._database import ChunkEmbedding
 
     ChunkEmbedding.set_embedding_dim(EMBED_DIM)
     db_module.create_database_engine = lambda config=None: engine
@@ -115,7 +115,7 @@ def bench_plan(engine: Any) -> dict[str, Any]:
 
 def bench_vector(engine: Any, config: Any, query_vectors: list[np.ndarray]) -> dict[str, Any]:
     """Vector search latency: raglite's wrapper vs raw SQL, plus the brute-force floor."""
-    from raglite._search import vector_search
+    from weknow._search import vector_search
 
     conn = engine.raw_connection()
     cursor = conn.cursor()
@@ -179,8 +179,8 @@ def bench_rerank(config: Any, num_chunks: int) -> dict[str, Any]:
     from rerankers import Reranker
     from sqlmodel import Session, select
 
-    from raglite._database import ChunkEmbedding
-    from raglite._search import rerank_chunks
+    from weknow._database import ChunkEmbedding
+    from weknow._search import rerank_chunks
 
     # Point flashrank at the already-extracted local cache so the benchmark never needs the network.
     rerank_config = replace(
@@ -189,7 +189,7 @@ def bench_rerank(config: Any, num_chunks: int) -> dict[str, Any]:
             "ms-marco-MiniLM-L-12-v2",
             model_type="flashrank",
             verbose=0,
-            cache_dir=user_data_dir("raglite", ensure_exists=True),
+            cache_dir=user_data_dir("weknow", ensure_exists=True),
         ),
     )
     with Session(create_bench_engine()) as session:
@@ -221,7 +221,7 @@ def bench_pipeline(config: Any, query_vectors: list[np.ndarray]) -> dict[str, An
     """
     from platformdirs import user_data_dir
     from rerankers import Reranker
-    from raglite._search import search_and_rerank_chunks, vector_search
+    from weknow._search import search_and_rerank_chunks, vector_search
 
     rerank_config = replace(
         config,
@@ -229,7 +229,7 @@ def bench_pipeline(config: Any, query_vectors: list[np.ndarray]) -> dict[str, An
             "ms-marco-MiniLM-L-12-v2",
             model_type="flashrank",
             verbose=0,
-            cache_dir=user_data_dir("raglite", ensure_exists=True),
+            cache_dir=user_data_dir("weknow", ensure_exists=True),
         ),
     )
 
@@ -277,7 +277,7 @@ def main() -> None:
     import os
 
     os.chdir(Path(__file__).parent)
-    from raglite import RAGLiteConfig
+    from weknow import RAGLiteConfig
 
     if not Path(DB_FILE).exists():
         raise SystemExit(f"{DB_FILE} not found; run fill_and_search.py first.")

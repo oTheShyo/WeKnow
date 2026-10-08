@@ -4,19 +4,19 @@ from pathlib import Path
 
 import numpy as np
 
-from raglite import RAGLiteConfig
-from raglite._embed import embed_strings
-from raglite._markdown import document_to_markdown
-from raglite._split_sentences import split_sentences
+from weknow import RAGLiteConfig
+from weknow._embed import embed_strings
+from weknow._markdown import document_to_markdown
+from weknow._split_sentences import split_sentences
 
 
 def test_embed(embedder: str) -> None:
     """Test embedding a document."""
-    raglite_test_config = RAGLiteConfig(embedder=embedder, embedder_normalize=True)
+    weknow_test_config = RAGLiteConfig(embedder=embedder, embedder_normalize=True)
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
     doc = document_to_markdown(doc_path)
-    sentences = split_sentences(doc, max_len=raglite_test_config.chunk_max_size)
-    sentence_embeddings = embed_strings(sentences, config=raglite_test_config)
+    sentences = split_sentences(doc, max_len=weknow_test_config.chunk_max_size)
+    sentence_embeddings = embed_strings(sentences, config=weknow_test_config)
     assert isinstance(sentences, list)
     assert isinstance(sentence_embeddings, np.ndarray)
     assert len(sentences) == len(sentence_embeddings)

@@ -14,8 +14,8 @@ import duckdb
 import numpy as np
 
 from bench_resume import BASE_KWARGS, EMBED_DIM, NUM_QUERIES, pct
-from raglite import RAGLiteConfig
-from raglite._database import create_database_engine
+from weknow import RAGLiteConfig
+from weknow._database import create_database_engine
 
 DB_FILE = "bench_data.db"
 NUM_CHUNKS = 1000
@@ -118,8 +118,8 @@ def bench_search(config: RAGLiteConfig) -> dict:
     from sqlalchemy.pool import SingletonThreadPool
     from sqlmodel import Session, text
 
-    import raglite._database as db_module
-    import raglite._search as search_module
+    import weknow._database as db_module
+    import weknow._search as search_module
 
     # DuckDB VSS loads the HNSW index into memory per connection, so pin all raglite
     # sessions to a single pooled connection to measure steady-state query latency.
@@ -134,7 +134,7 @@ def bench_search(config: RAGLiteConfig) -> dict:
     db_module.create_database_engine = lambda config=None: engine
     search_module.create_database_engine = db_module.create_database_engine
 
-    from raglite._search import (
+    from weknow._search import (
         keyword_search,
         reciprocal_rank_fusion,
         retrieve_chunk_spans,
@@ -194,7 +194,7 @@ def bench_search(config: RAGLiteConfig) -> dict:
                 "ms-marco-MiniLM-L-12-v2",
                 model_type="flashrank",
                 verbose=0,
-                cache_dir=user_data_dir("raglite", ensure_exists=True),
+                cache_dir=user_data_dir("weknow", ensure_exists=True),
             ),
         )
         for _ in range(20):

@@ -8,7 +8,7 @@ effect claim, and nothing in it can be compared against published numbers. This 
 runs the repository's DuckDB FTS (BM25) retrieval on an official BEIR dataset with official
 qrels, so the resulting nDCG@10 / Recall@100 can be placed next to published baselines.
 
-It also exercises the `IREvaluator` interface in `raglite._bench`, which until now had never been
+It also exercises the `IREvaluator` interface in `weknow._bench`, which until now had never been
 run: the evaluator writes an ir_measures-compatible TREC run to the raglite data directory.
 
 No model is required
@@ -36,10 +36,10 @@ import ir_datasets
 from ir_measures import MRR, Recall, ScoredDoc, calc_aggregate, nDCG
 from tqdm.auto import tqdm
 
-from raglite import keyword_search
-from raglite._bench import IREvaluator
-from raglite._config import RAGLiteConfig
-from raglite._database import create_database_engine
+from weknow import keyword_search
+from weknow._bench import IREvaluator
+from weknow._config import RAGLiteConfig
+from weknow._database import create_database_engine
 
 DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else "beir/nfcorpus/test"
 NUM_RESULTS = 1000

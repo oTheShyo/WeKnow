@@ -5,16 +5,16 @@ from pathlib import Path
 from sqlmodel import Session, select
 from tqdm import tqdm
 
-from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, Document, create_database_engine
-from raglite._insert import _get_database_metadata, insert_documents
-from raglite._markdown import document_to_markdown
+from weknow._config import RAGLiteConfig
+from weknow._database import Chunk, Document, create_database_engine
+from weknow._insert import _get_database_metadata, insert_documents
+from weknow._markdown import document_to_markdown
 
 
-def test_insert(raglite_test_config: RAGLiteConfig) -> None:
+def test_insert(weknow_test_config: RAGLiteConfig) -> None:
     """Test document insertion."""
     # Open a session to extract document and chunks from the existing database.
-    with Session(create_database_engine(raglite_test_config)) as session:
+    with Session(create_database_engine(weknow_test_config)) as session:
         # Get the first document from the database (already inserted by the fixture).
         document = session.exec(select(Document)).first()
         assert document is not None, "No document found in the database"
@@ -59,7 +59,7 @@ def test_insert(raglite_test_config: RAGLiteConfig) -> None:
 
 
 def test_insert_reuse_document_instance(
-    isolated_raglite_test_config: RAGLiteConfig,
+    isolated_weknow_test_config: RAGLiteConfig,
 ) -> None:
     """Reuse a document instance across calls without errors."""
     doc = Document.from_text(
@@ -68,16 +68,16 @@ def test_insert_reuse_document_instance(
         filename="reuse_instance.html",
         id="reuse-instance-test",
     )
-    insert_documents([doc], config=isolated_raglite_test_config)
-    insert_documents([doc], config=isolated_raglite_test_config)
+    insert_documents([doc], config=isolated_weknow_test_config)
+    insert_documents([doc], config=isolated_weknow_test_config)
 
-    with Session(create_database_engine(isolated_raglite_test_config)) as session:
+    with Session(create_database_engine(isolated_weknow_test_config)) as session:
         documents = session.exec(select(Document).where(Document.id == "reuse-instance-test")).all()
         assert len(documents) == 1
 
 
 def test_insert_duplicate_documents_with_same_id(
-    isolated_raglite_test_config: RAGLiteConfig,
+    isolated_weknow_test_config: RAGLiteConfig,
 ) -> None:
     """De-duplicate incoming documents that share the same id."""
     doc1 = Document.from_text(
@@ -92,8 +92,8 @@ def test_insert_duplicate_documents_with_same_id(
         filename="duplicate.html",
         id="duplicate-id-test",
     )
-    insert_documents([doc1, doc2], config=isolated_raglite_test_config)
+    insert_documents([doc1, doc2], config=isolated_weknow_test_config)
 
-    with Session(create_database_engine(isolated_raglite_test_config)) as session:
+    with Session(create_database_engine(isolated_weknow_test_config)) as session:
         documents = session.exec(select(Document).where(Document.id == "duplicate-id-test")).all()
         assert len(documents) == 1

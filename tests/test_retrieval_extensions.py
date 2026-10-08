@@ -9,11 +9,11 @@ from typing import Any
 
 import pytest
 
-from raglite import Document
-from raglite._cache import RetrievalCache, get_retrieval_cache
-from raglite._eval_generation import _tokenize, bleu_n, evaluate_generation, rouge_l_f1
-from raglite._iterative_search import search_with_secondary_retrieval
-from raglite._router import route_search_method
+from weknow import Document
+from weknow._cache import RetrievalCache, get_retrieval_cache
+from weknow._eval_generation import _tokenize, bleu_n, evaluate_generation, rouge_l_f1
+from weknow._iterative_search import search_with_secondary_retrieval
+from weknow._router import route_search_method
 
 NUM_RESULTS = 4  # Results requested in the secondary retrieval tests.
 OVERSAMPLE = 4  # Oversampling factor in the secondary retrieval tests.
@@ -161,7 +161,7 @@ def mock_search() -> dict[str, Any]:
 @pytest.fixture
 def test_config() -> Any:
     """A config without model dependencies (no reranker, explicit llm/embedder strings)."""
-    from raglite import RAGLiteConfig
+    from weknow import RAGLiteConfig
 
     return RAGLiteConfig(
         db_url="duckdb:///:memory:",
@@ -188,7 +188,7 @@ def test_secondary_retrieval_skipped_without_reranker(
     ) -> tuple[list[str], list[float] | None]:
         return _chunk_like(chunk_ids), None
 
-    import raglite._search as search_module
+    import weknow._search as search_module
 
     monkeypatch.setattr(search_module, "rerank_chunks_with_scores", no_reranker_scores)
     chunk_ids, _ = search_with_secondary_retrieval(
@@ -209,7 +209,7 @@ def test_secondary_retrieval_triggered_below_threshold(
         scores = [0.1 - i * 0.001 for i in range(len(chunk_ids))]
         return _chunk_like(chunk_ids), scores
 
-    import raglite._search as search_module
+    import weknow._search as search_module
 
     monkeypatch.setattr(search_module, "rerank_chunks_with_scores", low_confidence_scores)
     chunk_ids, scores = search_with_secondary_retrieval(
@@ -236,7 +236,7 @@ def test_secondary_retrieval_not_triggered_above_threshold(
         scores = [0.9 - i * 0.01 for i in range(len(chunk_ids))]
         return _chunk_like(chunk_ids), scores
 
-    import raglite._search as search_module
+    import weknow._search as search_module
 
     monkeypatch.setattr(search_module, "rerank_chunks_with_scores", high_confidence_scores)
     search_with_secondary_retrieval(
@@ -254,7 +254,7 @@ def test_sync_documents_new_and_unchanged(
     monkeypatch: pytest.MonkeyPatch, test_config: Any
 ) -> None:
     """New documents are inserted; documents already in the database are unchanged."""
-    import raglite._incremental as incremental_module
+    import weknow._incremental as incremental_module
 
     inserted_ids: list[str] = []
     deleted_ids: list[str] = []
@@ -276,8 +276,8 @@ def test_sync_documents_new_and_unchanged(
             if (doc_id := value) in stored_ids
         }
 
-    monkeypatch.setattr("raglite._insert.insert_documents", fake_insert)
-    monkeypatch.setattr("raglite._delete.delete_documents", fake_delete)
+    monkeypatch.setattr("weknow._insert.insert_documents", fake_insert)
+    monkeypatch.setattr("weknow._delete.delete_documents", fake_delete)
     monkeypatch.setattr(incremental_module, "_existing_documents_by_key", fake_existing)
     documents = [
         Document(id="doc-a", filename="doc-a.md", content="unchanged content"),
@@ -295,7 +295,7 @@ def test_sync_documents_hot_update_replaces_stale_version(
     monkeypatch: pytest.MonkeyPatch, test_config: Any
 ) -> None:
     """A changed document (same filename, new content hash) replaces its stale version."""
-    import raglite._incremental as incremental_module
+    import weknow._incremental as incremental_module
 
     inserted_ids: list[str] = []
     deleted_ids: list[str] = []
@@ -314,8 +314,8 @@ def test_sync_documents_hot_update_replaces_stale_version(
 
         return {}
 
-    monkeypatch.setattr("raglite._insert.insert_documents", fake_insert)
-    monkeypatch.setattr("raglite._delete.delete_documents", fake_delete)
+    monkeypatch.setattr("weknow._insert.insert_documents", fake_insert)
+    monkeypatch.setattr("weknow._delete.delete_documents", fake_delete)
     monkeypatch.setattr(incremental_module, "_existing_documents_by_key", fake_existing)
     documents = [Document(id="doc-v2", filename="report.md", content="updated content")]
     report = incremental_module.sync_documents(documents, key="filename", config=test_config)
@@ -330,7 +330,7 @@ def test_sync_documents_invalidates_cache(
     monkeypatch: pytest.MonkeyPatch, test_config: Any
 ) -> None:
     """Syncing documents clears the process-wide retrieval cache."""
-    import raglite._incremental as incremental_module
+    import weknow._incremental as incremental_module
 
     def fake_insert(documents: list[Document], **kwargs: Any) -> None:
         pass
@@ -338,9 +338,9 @@ def test_sync_documents_invalidates_cache(
     def fake_delete(document_ids: list[str], **kwargs: Any) -> int:
         return 0
 
-    monkeypatch.setattr("raglite._insert.insert_documents", fake_insert)
-    monkeypatch.setattr("raglite._delete.delete_documents", fake_delete)
-    monkeypatch.setattr("raglite._incremental._existing_documents_by_key", lambda *args: {})
+    monkeypatch.setattr("weknow._insert.insert_documents", fake_insert)
+    monkeypatch.setattr("weknow._delete.delete_documents", fake_delete)
+    monkeypatch.setattr("weknow._incremental._existing_documents_by_key", lambda *args: {})
     cache = get_retrieval_cache()
     cache.set(cache.make_key("q", num_results=3), (["c1"], [1.0]))
     document = Document(id="doc-new", filename="new.md", content="content")

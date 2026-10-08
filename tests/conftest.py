@@ -11,11 +11,11 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-from raglite import Document, RAGLiteConfig, insert_documents
+from weknow import Document, RAGLiteConfig, insert_documents
 
 load_dotenv()
 
-POSTGRES_URL = "postgresql+pg8000://raglite_user:raglite_password@postgres:5432/postgres"
+POSTGRES_URL = "postgresql+pg8000://weknow_user:weknow_password@postgres:5432/postgres"
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -47,15 +47,15 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         engine = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
             for variant in ["local", "remote"]:
-                conn.execute(text(f"DROP DATABASE IF EXISTS raglite_test_{variant}"))
-                conn.execute(text(f"CREATE DATABASE raglite_test_{variant}"))
+                conn.execute(text(f"DROP DATABASE IF EXISTS weknow_test_{variant}"))
+                conn.execute(text(f"CREATE DATABASE weknow_test_{variant}"))
 
 
 @pytest.fixture(scope="session")
 def duckdb_url() -> Generator[str, None, None]:
     """Create a temporary DuckDB database file and return the database URL."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        db_file = Path(temp_dir) / "raglite_test.db"
+        db_file = Path(temp_dir) / "weknow_test.db"
         yield f"duckdb:///{db_file}"
 
 
@@ -116,12 +116,12 @@ def embedder(llm_embedder: tuple[str, str]) -> str:
 
 
 @pytest.fixture(scope="session")
-def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig:
+def weknow_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig:
     """Create a lightweight in-memory config for testing DuckDB and PostgreSQL."""
     # Select the database based on the embedder.
     variant = "local" if embedder.startswith("llama-cpp-python") else "remote"
     if "postgres" in database:
-        database = database.replace("/postgres", f"/raglite_test_{variant}")
+        database = database.replace("/postgres", f"/weknow_test_{variant}")
     elif "duckdb" in database:
         database = database.replace(".db", f"_{variant}.db")
     # Create a RAGLite config for the given database and embedder.
@@ -134,10 +134,10 @@ def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig
 
 
 @pytest.fixture
-def isolated_raglite_test_config(raglite_test_config: RAGLiteConfig) -> RAGLiteConfig:
+def isolated_weknow_test_config(weknow_test_config: RAGLiteConfig) -> RAGLiteConfig:
     """Create an isolated in-memory config for tests that insert custom datasets."""
     return RAGLiteConfig(
         db_url="duckdb:///:memory:",
-        llm=raglite_test_config.llm,
-        embedder=raglite_test_config.embedder,
+        llm=weknow_test_config.llm,
+        embedder=weknow_test_config.embedder,
     )

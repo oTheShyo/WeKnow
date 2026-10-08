@@ -15,14 +15,14 @@ from pathlib import Path
 import ir_datasets
 from platformdirs import user_data_dir
 
-from raglite._config import RAGLiteConfig
-from raglite._database import create_database_engine
-from raglite._graph import CooccurrenceExtractor, GraphConfig, build_chunk_relations, graph_search
+from weknow._config import RAGLiteConfig
+from weknow._database import create_database_engine
+from weknow._graph import CooccurrenceExtractor, GraphConfig, build_chunk_relations, graph_search
 
 DB_NAME = "graph_beir-nfcorpus.db"
 CAP = 32
 
-db_path = Path(user_data_dir("raglite", ensure_exists=True)) / DB_NAME
+db_path = Path(user_data_dir("weknow", ensure_exists=True)) / DB_NAME
 config = RAGLiteConfig(
     llm="gpt-4o-mini",
     embedder="text-embedding-3-small",

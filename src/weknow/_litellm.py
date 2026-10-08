@@ -1,0 +1,473 @@
+"""Add support for llama-cpp-python models to LiteLLM."""
+
+import asyncio
+import contextlib
+import logging
+import os
+import warnings
+from collections.abc import AsyncIterator, Callable, Iterator
+from functools import cache
+from io import StringIO
+from threading import Lock
+from typing import Any, ClassVar, cast
+
+import httpx
+import litellm
+from litellm import (  # type: ignore[attr-defined]
+    ChatCompletionToolCallChunk,
+    ChatCompletionToolCallFunctionChunk,
+    CustomLLM,
+    GenericStreamingChunk,
+    ModelResponse,
+    convert_to_model_response_object,
+    get_model_info,
+)
+from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
+from litellm.utils import custom_llm_setup
+
+from weknow._chatml_function_calling import chatml_function_calling_with_streaming
+from weknow._config import RAGLiteConfig
+from weknow._lazy_llama import (
+    Llama,
+    LlamaRAMCache,
+    llama_supports_gpu_offload,
+    llama_types,
+)
+
+# Reduce the logging level for LiteLLM, flashrank, and httpx.
+litellm.suppress_debug_info = True
+os.environ["LITELLM_LOG"] = "WARNING"
+# Do not block startup on LiteLLM's remote model cost map. By default LiteLLM fetches
+# https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json on
+# first use and retries three times with exponential backoff. On a network where that host is
+# unreachable this adds tens of seconds to the first call for no benefit, because we only need the
+# bundled map (and we register custom models ourselves, see register_model_metadata). Set the
+# environment variable before importing anything that reads it, and let an explicit user override win.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+logging.getLogger("flashrank").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+class LlamaCppPythonLLM(CustomLLM):
+    """A llama-cpp-python provider for LiteLLM.
+
+    This provider enables using llama-cpp-python models with LiteLLM. The LiteLLM model
+    specification is "llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>", where n_ctx is
+    an optional parameter that specifies the context size of the model. If n_ctx is not provided or
+    if it's set to 0, the model's default context size is used.
+
+    Example usage:
+
+    ```python
+    from litellm import completion
+
+    response = completion(
+        model="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
+        messages=[{"role": "user", "content": "Hello world!"}],
+        # stream=True
+    )
+    ```
+    """
+
+    # Create locks to prevent concurrent access to llama-cpp-python models.
+    streaming_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
+    completion_lock: ClassVar[Lock] = Lock()
+
+    # The set of supported OpenAI parameters is the intersection of [1] and [2]. Not included:
+    # max_completion_tokens, stream_options, n, user, logprobs, top_logprobs, extra_headers.
+    # [1] https://llama-cpp-python.readthedocs.io/en/latest/api-reference/#llama_cpp.Llama.create_chat_completion
+    # [2] https://docs.litellm.ai/docs/completion/input
+    supported_openai_params: ClassVar[list[str]] = [
+        "functions",  # Deprecated
+        "function_call",  # Deprecated
+        "tools",
+        "tool_choice",
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "typical_p",
+        "stop",
+        "seed",
+        "response_format",
+        "max_tokens",
+        "presence_penalty",
+        "frequency_penalty",
+        "repeat_penalty",
+        "tfs_z",
+        "mirostat_mode",
+        "mirostat_tau",
+        "mirostat_eta",
+        "logit_bias",
+    ]
+
+    @staticmethod
+    @cache
+    def llm(model: str, **kwargs: Any) -> Llama:
+        # Drop the llama-cpp-python prefix from the model.
+        repo_id_filename = model.replace("llama-cpp-python/", "")
+        # Convert the LiteLLM model string to repo_id, filename, and n_ctx.
+        repo_id, filename = repo_id_filename.rsplit("/", maxsplit=1)
+        n_ctx = 0
+        if len(filename_n_ctx := filename.rsplit("@", maxsplit=1)) == 2:  # noqa: PLR2004
+            filename, n_ctx_str = filename_n_ctx
+            n_ctx = int(n_ctx_str)
+        # Load the LLM.
+        with (
+            contextlib.redirect_stderr(StringIO()),  # Filter spurious llama.cpp output.
+            warnings.catch_warnings(),  # Filter huggingface_hub warning about HF_TOKEN.
+        ):
+            warnings.filterwarnings("ignore", category=UserWarning)
+            llm = Llama.from_pretrained(
+                repo_id=repo_id,
+                filename=filename,
+                n_ctx=n_ctx,
+                n_gpu_layers=-1,
+                verbose=False,
+                # Enable function calling with streaming.
+                chat_handler=chatml_function_calling_with_streaming,
+                # Workaround to enable long context embedding models [1].
+                # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
+                n_batch=n_ctx if n_ctx > 0 else 1024,
+                n_ubatch=n_ctx if n_ctx > 0 else 1024,
+                **kwargs,
+            )
+        # Enable caching.
+        if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 8:  # noqa: PLR2004
+            llm.set_cache(LlamaRAMCache())
+        # Register the model info with LiteLLM.
+        model_info = {
+            repo_id_filename: {
+                "max_tokens": llm.n_ctx(),
+                "max_input_tokens": llm.n_ctx(),
+                "max_output_tokens": None,
+                "input_cost_per_token": 0.0,
+                "output_cost_per_token": 0.0,
+                "output_vector_size": llm.n_embd() if kwargs.get("embedding") else None,
+                "litellm_provider": "llama-cpp-python",
+                "mode": "embedding" if kwargs.get("embedding") else "completion",
+                "supported_openai_params": LlamaCppPythonLLM.supported_openai_params,
+                "supports_function_calling": True,
+                "supports_parallel_function_calling": True,
+                "supports_vision": False,
+            }
+        }
+        litellm.register_model(model_info)  # type: ignore[attr-defined]
+        return llm
+
+    def _translate_openai_params(self, optional_params: dict[str, Any]) -> dict[str, Any]:
+        # Filter out unsupported OpenAI parameters.
+        llama_cpp_python_params = {
+            k: v for k, v in optional_params.items() if k in self.supported_openai_params
+        }
+        # Translate OpenAI's response_format [1] to llama-cpp-python's response_format [2].
+        # [1] https://platform.openai.com/docs/guides/structured-outputs
+        # [2] https://github.com/abetlen/llama-cpp-python#json-schema-mode
+        if (
+            "response_format" in llama_cpp_python_params
+            and "json_schema" in llama_cpp_python_params["response_format"]
+        ):
+            llama_cpp_python_params["response_format"] = {
+                "type": "json_object",
+                "schema": llama_cpp_python_params["response_format"]["json_schema"]["schema"],
+            }
+        return llama_cpp_python_params
+
+    def _add_recommended_model_params(
+        self, model: str, llama_cpp_python_params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Add recommended model settings."""
+        recommended_settings = {}
+        if "qwen3" in model.lower():
+            # Add the official recommended 'thinking mode' settings [1].
+            # [1] https://docs.unsloth.ai/basics/qwen3-how-to-run-and-fine-tune#official-recommended-settings
+            recommended_settings = {"temperature": 0.6, "min_p": 0.0, "top_p": 0.95, "top_k": 20}
+        return {**recommended_settings, **llama_cpp_python_params}
+
+    def completion(  # noqa: PLR0913
+        self,
+        model: str,
+        messages: list[llama_types.ChatCompletionRequestMessage],
+        api_base: str,
+        custom_prompt_dict: dict[str, Any],
+        model_response: ModelResponse,
+        print_verbose: Callable,  # type: ignore[type-arg]
+        encoding: str,
+        api_key: str,
+        logging_obj: Any,
+        optional_params: dict[str, Any],
+        acompletion: Callable | None = None,  # type: ignore[type-arg]
+        litellm_params: dict[str, Any] | None = None,
+        logger_fn: Callable | None = None,  # type: ignore[type-arg]
+        headers: dict[str, Any] | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        client: HTTPHandler | None = None,
+    ) -> ModelResponse:
+        llm = self.llm(model)
+        llama_cpp_python_params = self._translate_openai_params(optional_params)
+        llama_cpp_python_params = self._add_recommended_model_params(model, llama_cpp_python_params)
+        with LlamaCppPythonLLM.completion_lock:
+            response = cast(
+                "llama_types.CreateChatCompletionResponse",
+                llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
+            )
+        litellm_model_response: ModelResponse = convert_to_model_response_object(
+            response_object=response,
+            model_response_object=model_response,
+            response_type="completion",
+            stream=False,
+        )
+        return litellm_model_response
+
+    def streaming(  # noqa: PLR0913
+        self,
+        model: str,
+        messages: list[llama_types.ChatCompletionRequestMessage],
+        api_base: str,
+        custom_prompt_dict: dict[str, Any],
+        model_response: ModelResponse,
+        print_verbose: Callable,  # type: ignore[type-arg]
+        encoding: str,
+        api_key: str,
+        logging_obj: Any,
+        optional_params: dict[str, Any],
+        acompletion: Callable | None = None,  # type: ignore[type-arg]
+        litellm_params: dict[str, Any] | None = None,
+        logger_fn: Callable | None = None,  # type: ignore[type-arg]
+        headers: dict[str, Any] | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        client: HTTPHandler | None = None,
+    ) -> Iterator[GenericStreamingChunk]:
+        llm = self.llm(model)
+        llama_cpp_python_params = self._translate_openai_params(optional_params)
+        llama_cpp_python_params = self._add_recommended_model_params(model, llama_cpp_python_params)
+        stream = cast(
+            "Iterator[llama_types.CreateChatCompletionStreamResponse]",
+            llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),
+        )
+        for chunk in stream:
+            choices = chunk.get("choices")
+            if not choices:
+                continue
+            text = choices[0].get("delta", {}).get("content", None)  # type: ignore[call-overload]
+            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)  # type: ignore[call-overload]
+            tool_use = (
+                ChatCompletionToolCallChunk(
+                    id=tool_calls[0]["id"],  # type: ignore[index]
+                    type="function",
+                    function=ChatCompletionToolCallFunctionChunk(
+                        name=tool_calls[0]["function"]["name"],  # type: ignore[index]
+                        arguments=tool_calls[0]["function"]["arguments"],  # type: ignore[index]
+                    ),
+                    index=tool_calls[0]["index"],  # type: ignore[index]
+                )
+                if tool_calls
+                else None
+            )
+            finish_reason = choices[0].get("finish_reason")
+            litellm_generic_streaming_chunk = GenericStreamingChunk(
+                text=text,  # type: ignore[typeddict-item]
+                tool_use=tool_use,
+                is_finished=bool(finish_reason),
+                finish_reason=finish_reason,  # type: ignore[typeddict-item]
+                usage=None,
+                index=choices[0].get("index"),  # type: ignore[typeddict-item]
+                provider_specific_fields={
+                    "id": chunk.get("id"),
+                    "model": chunk.get("model"),
+                    "created": chunk.get("created"),
+                    "object": chunk.get("object"),
+                },
+            )
+            yield litellm_generic_streaming_chunk
+
+    async def astreaming(  # type: ignore[misc,override]  # noqa: PLR0913
+        self,
+        model: str,
+        messages: list[llama_types.ChatCompletionRequestMessage],
+        api_base: str,
+        custom_prompt_dict: dict[str, Any],
+        model_response: ModelResponse,
+        print_verbose: Callable,  # type: ignore[type-arg]
+        encoding: str,
+        api_key: str,
+        logging_obj: Any,
+        optional_params: dict[str, Any],
+        acompletion: Callable | None = None,  # type: ignore[type-arg]
+        litellm_params: dict[str, Any] | None = None,
+        logger_fn: Callable | None = None,  # type: ignore[type-arg]
+        headers: dict[str, Any] | None = None,
+        timeout: float | httpx.Timeout | None = None,
+        client: AsyncHTTPHandler | None = None,
+    ) -> AsyncIterator[GenericStreamingChunk]:
+        # Start a synchronous stream.
+        stream = self.streaming(
+            model,
+            messages,
+            api_base,
+            custom_prompt_dict,
+            model_response,
+            print_verbose,
+            encoding,
+            api_key,
+            logging_obj,
+            optional_params,
+            acompletion,
+            litellm_params,
+            logger_fn,
+            headers,
+            timeout,
+        )
+        await asyncio.sleep(0)  # Yield control to the event loop after initialising the context.
+        # Wrap the synchronous stream in an asynchronous stream.
+        async with LlamaCppPythonLLM.streaming_lock:
+            for litellm_generic_streaming_chunk in stream:
+                yield litellm_generic_streaming_chunk
+                await asyncio.sleep(0)  # Yield control to the event loop after each token.
+
+
+# Register the LlamaCppPythonLLM provider.
+if not any(provider["provider"] == "llama-cpp-python" for provider in litellm.custom_provider_map):
+    litellm.custom_provider_map.append(
+        {"provider": "llama-cpp-python", "custom_handler": LlamaCppPythonLLM()}
+    )
+    custom_llm_setup()  # type: ignore[no-untyped-call]
+
+
+def register_model_metadata(model: str, **metadata: Any) -> None:
+    """Register capability metadata for a model that LiteLLM does not know about.
+
+    LiteLLM resolves model capabilities (context size, function calling, embedding dimension)
+    from its bundled cost map. Any third-party or self-hosted model that is not in that map
+    silently loses those capabilities, which makes RAGLite refuse to use it — e.g.
+    `_get_tools` raises "You must use an LLM that supports function calling" even when the
+    served model does support it.
+
+    This lets you declare the metadata yourself. It is safe to call repeatedly; later calls
+    merge into the existing entry.
+
+    Example:
+        register_model_metadata(
+            "openai/qwen3.8-chat", max_tokens=131072, supports_function_calling=True
+        )
+        register_model_metadata(
+            "dashscope/qwen3.7-text-embedding-flash", output_vector_size=1024, mode="embedding"
+        )
+    """
+    entry: dict[str, Any] = {"input_cost_per_token": 0.0, "output_cost_per_token": 0.0}
+    entry.update(metadata)
+    entry.setdefault("mode", "completion")
+    # Derive the provider from the "provider/model" prefix so LiteLLM's lookups line up.
+    entry.setdefault("litellm_provider", model.split("/", 1)[0] if "/" in model else "openai")
+    merged = dict(litellm.model_cost.get(model) or {})
+    merged.update(entry)
+    litellm.register_model({model: merged})  # type: ignore[attr-defined]
+    # The model info lookups are cached, so drop the cache to make the new entry visible.
+    get_model_info.cache_clear()  # type: ignore[attr-defined]
+
+
+def autoregister_configured_model(config: RAGLiteConfig) -> None:
+    """Best-effort registration of the configured LLM and embedder with LiteLLM.
+
+    Called by the retrieval and generation entry points so that custom endpoints keep their
+    declared capabilities (context size, function calling, embedding dimension) instead of
+    falling back to conservative defaults. Only fills in what LiteLLM is missing; a model that
+    LiteLLM already knows about is left untouched.
+    """
+    for model, defaults in (
+        (
+            config.llm,
+            {
+                "max_tokens": getattr(config, "llm_context_size", None),
+                "supports_function_calling": True,
+                "supports_tool_choice": True,
+            },
+        ),
+        (
+            config.embedder,
+            {
+                "output_vector_size": getattr(config, "embedder_dimension", None),
+                "mode": "embedding",
+            },
+        ),
+    ):
+        specs = {k: v for k, v in defaults.items() if v is not None}
+        if not specs:
+            continue
+        with contextlib.suppress(Exception):
+            if not _model_is_known(model):
+                register_model_metadata(model, **specs)
+
+
+def _model_is_known(model: str) -> bool:
+    """Return whether LiteLLM can resolve metadata for `model` without raising."""
+    try:
+        get_model_info(model)
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+@cache
+def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
+    """Get the context size for the configured LLM."""
+    # Register the configured model so LiteLLM reports its declared capabilities.
+    autoregister_configured_model(config)
+    # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
+    # to date by loading that LLM.
+    if config.llm.startswith("llama-cpp-python"):
+        _ = LlamaCppPythonLLM.llm(config.llm)
+    # Attempt to read the context size from LiteLLM's model info. LiteLLM only knows this for
+    # models in its bundled cost map, so third-party or self-hosted models (e.g.
+    # "openai/qwen3.8-chat" served from a private gateway, or "dashscope/<new-model>") raise here.
+    # That is expected: fall through to the configurable default below.
+    max_tokens: Any = None
+    with contextlib.suppress(Exception):
+        model_info = get_model_info(config.llm)
+        max_tokens = model_info.get("max_tokens")
+    if isinstance(max_tokens, int) and max_tokens > 0:
+        return max_tokens
+    # Fall back to a default context size if the model info is not available.
+    if fallback > 0:
+        warnings.warn(
+            f"Could not determine the context size of {config.llm} from LiteLLM's model_info, using {fallback}.",
+            stacklevel=2,
+        )
+        return 2048
+    error_message = f"Could not determine the context size of {config.llm}."
+    raise ValueError(error_message)
+
+
+@cache
+def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
+    """Get the embedding dimension for the configured embedder."""
+    # Register the configured models first, so that a declared `embedder_dimension` is honoured
+    # instead of falling through to the network probe below.
+    autoregister_configured_model(config)
+    # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
+    # to date by loading that LLM.
+    if config.embedder.startswith("llama-cpp-python"):
+        _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
+    # Attempt to read the embedding dimension from LiteLLM's model info. LiteLLM only knows the
+    # output vector size for models in its bundled cost map, so third-party or self-hosted models
+    # (e.g. "dashscope/qwen3.7-text-embedding-flash" or "openai/<custom-model>") raise here.
+    # That is expected: fall through to the empirical probe below.
+    embedding_dim: Any = None
+    with contextlib.suppress(Exception):
+        model_info = get_model_info(config.embedder)
+        embedding_dim = model_info.get("output_vector_size")
+    if isinstance(embedding_dim, int) and embedding_dim > 0:
+        return embedding_dim
+    # If that fails, fall back to embedding a single sentence and reading its embedding dimension.
+    if fallback:
+        from weknow._embed import embed_strings
+
+        warnings.warn(
+            f"Could not determine the embedding dimension of {config.embedder} from LiteLLM's model_info, using fallback.",
+            stacklevel=2,
+        )
+        fallback_embeddings = embed_strings(["Hello world"], config=config)
+        return fallback_embeddings.shape[1]
+    error_message = f"Could not determine the embedding dimension of {config.embedder}."
+    raise ValueError(error_message)

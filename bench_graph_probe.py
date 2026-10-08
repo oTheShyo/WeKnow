@@ -30,9 +30,9 @@ from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from bench_beir import BASE_KWARGS, BM25Evaluator
-from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, create_database_engine
-from raglite._graph import (
+from weknow._config import RAGLiteConfig
+from weknow._database import Chunk, create_database_engine
+from weknow._graph import (
     CooccurrenceExtractor,
     GraphChunk,
     GraphChunkRelation,
@@ -65,7 +65,7 @@ def main() -> None:
     stack_every = float(os.environ.get("STACK_EVERY", "0") or 0)
     if stack_every:
         faulthandler.dump_traceback_later(stack_every, repeat=True)
-    db_path = Path(user_data_dir("raglite", ensure_exists=True)) / DB_NAME
+    db_path = Path(user_data_dir("weknow", ensure_exists=True)) / DB_NAME
     dataset = ir_datasets.load(DATASET_ID)
     extractor = CooccurrenceExtractor(
         min_occurrences=MIN_OCCURRENCES,

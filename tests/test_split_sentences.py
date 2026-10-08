@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from raglite._markdown import document_to_markdown
-from raglite._split_sentences import split_sentences
+from weknow._markdown import document_to_markdown
+from weknow._split_sentences import split_sentences
 
 
 def test_split_sentences() -> None:

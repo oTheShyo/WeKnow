@@ -16,9 +16,9 @@ import duckdb
 import ir_datasets
 from bench_beir import BASE_KWARGS
 
-from raglite._config import RAGLiteConfig
-from raglite._graph import CooccurrenceExtractor, GraphConfig, graph_search
-from raglite._search import keyword_search
+from weknow._config import RAGLiteConfig
+from weknow._graph import CooccurrenceExtractor, GraphConfig, graph_search
+from weknow._search import keyword_search
 
 NUM_QUERIES = int(sys.argv[1]) if len(sys.argv) > 1 else 20
 DB_NAME = sys.argv[2] if len(sys.argv) > 2 else "graph_beir-nfcorpus.db"

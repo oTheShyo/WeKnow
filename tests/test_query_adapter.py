@@ -5,16 +5,16 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from raglite import RAGLiteConfig, insert_evals, update_query_adapter, vector_search
-from raglite._database import IndexMetadata
+from weknow import RAGLiteConfig, insert_evals, update_query_adapter, vector_search
+from weknow._database import IndexMetadata
 
 
 @pytest.mark.slow
-def test_query_adapter(raglite_test_config: RAGLiteConfig) -> None:
+def test_query_adapter(weknow_test_config: RAGLiteConfig) -> None:
     """Test the query adapter update functionality."""
     # Create a config with and without the query adapter enabled.
-    config_with_query_adapter = replace(raglite_test_config, vector_search_query_adapter=True)
-    config_without_query_adapter = replace(raglite_test_config, vector_search_query_adapter=False)
+    config_with_query_adapter = replace(weknow_test_config, vector_search_query_adapter=True)
+    config_without_query_adapter = replace(weknow_test_config, vector_search_query_adapter=False)
     # Verify that there is no query adapter in the database.
     Q = IndexMetadata.get("default", config=config_without_query_adapter).get("query_adapter")  # noqa: N806
     assert Q is None

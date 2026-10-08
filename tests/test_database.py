@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from raglite import RAGLiteConfig
-from raglite._database import create_database_engine
+from weknow import RAGLiteConfig
+from weknow._database import create_database_engine
 
 
 def test_in_memory_duckdb_creation(tmp_path: Path) -> None:

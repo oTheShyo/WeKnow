@@ -1,8 +1,8 @@
 """Test RAGLite."""
 
-import raglite
+import weknow
 
 
 def test_import() -> None:
     """Test that the package can be imported."""
-    assert isinstance(raglite.__name__, str)
+    assert isinstance(weknow.__name__, str)

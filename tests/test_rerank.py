@@ -8,8 +8,8 @@ from rerankers.models.flashrank_ranker import FlashRankRanker
 from rerankers.models.ranker import BaseRanker
 from scipy.stats import kendalltau
 
-from raglite import RAGLiteConfig, rerank_chunks, retrieve_chunks, vector_search
-from raglite._database import Chunk
+from weknow import RAGLiteConfig, rerank_chunks, retrieve_chunks, vector_search
+from weknow._database import Chunk
 
 T = TypeVar("T")
 
@@ -42,19 +42,19 @@ def reranker(
 
 
 def test_reranker(
-    raglite_test_config: RAGLiteConfig,
+    weknow_test_config: RAGLiteConfig,
     reranker: BaseRanker | dict[str, BaseRanker] | None,
 ) -> None:
     """Test inserting a document, updating the indexes, and searching for a query."""
     # Update the config with the reranker.
-    raglite_test_config = RAGLiteConfig(
-        db_url=raglite_test_config.db_url, embedder=raglite_test_config.embedder, reranker=reranker
+    weknow_test_config = RAGLiteConfig(
+        db_url=weknow_test_config.db_url, embedder=weknow_test_config.embedder, reranker=reranker
     )
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
-    chunk_ids, _ = vector_search(query, num_results=40, config=raglite_test_config)
+    chunk_ids, _ = vector_search(query, num_results=40, config=weknow_test_config)
     # Retrieve the chunks.
-    chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
+    chunks = retrieve_chunks(chunk_ids, config=weknow_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     assert all(chunk_id == chunk.id for chunk_id, chunk in zip(chunk_ids, chunks, strict=True))
     # Randomly shuffle the chunks.
@@ -62,7 +62,7 @@ def test_reranker(
     chunks_random = random.sample(chunks, len(chunks))
     # Rerank the chunks starting from a pathological order and verify that it improves the ranking.
     for arg in (chunks[::-1], chunk_ids[::-1]):
-        reranked_chunks = rerank_chunks(query, arg, config=raglite_test_config)
+        reranked_chunks = rerank_chunks(query, arg, config=weknow_test_config)
         if reranker:
             τ_search = kendall_tau(chunks, reranked_chunks)  # noqa: PLC2401
             τ_inverse = kendall_tau(chunks[::-1], reranked_chunks)  # noqa: PLC2401

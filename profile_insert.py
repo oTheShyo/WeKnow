@@ -5,12 +5,12 @@ import pstats
 import sys
 from pathlib import Path
 
-import raglite._insert as insert_module
-from raglite import Document, RAGLiteConfig
+import weknow._insert as insert_module
+from weknow import Document, RAGLiteConfig
 
 sys.path.insert(0, str(Path(__file__).parent))
 from bench_resume import BASE_KWARGS, _cached_split_sentences, mock_embeddings  # noqa: E402
-from raglite._split_sentences import split_sentences as real_split_sentences  # noqa: E402
+from weknow._split_sentences import split_sentences as real_split_sentences  # noqa: E402
 
 import bench_resume  # noqa: E402
 

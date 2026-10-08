@@ -82,7 +82,7 @@ QA_SET = [
 
 
 def build_config() -> object:
-    from raglite import RAGLiteConfig
+    from weknow import RAGLiteConfig
 
     base = os.environ.get("OPENAI_API_BASE", "")
     key = os.environ.get("OPENAI_API_KEY", "")
@@ -121,7 +121,7 @@ def build_config() -> object:
 
 
 def insert_sample(config: object) -> None:
-    from raglite import Document, insert_documents
+    from weknow import Document, insert_documents
 
     doc = Document.from_text(SAMPLE_DOC, author="bench", topic="quantum", year=2026)
     insert_documents([doc], config=config)
@@ -129,7 +129,7 @@ def insert_sample(config: object) -> None:
 
 
 def bench_generation(config: object, runs: int) -> dict:
-    from raglite import rag
+    from weknow import rag
 
     ttfts, totals = [], []
     for i in range(runs):
@@ -156,7 +156,7 @@ def bench_generation(config: object, runs: int) -> dict:
 
 
 def bench_qa_accuracy(config: object) -> dict:
-    from raglite import rag
+    from weknow import rag
 
     correct = 0
     details = []

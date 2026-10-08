@@ -7,12 +7,12 @@ from typing import Any
 import pytest
 
 
-def test_raglite_import_without_llama_cpp(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_weknow_import_without_llama_cpp(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test that RAGLite can be imported without llama-cpp-python being available."""
-    # Unimport raglite and llama_cpp.
+    # Unimport weknow and llama_cpp.
     module_names = list(sys.modules)
     for module_name in module_names:
-        if module_name.startswith(("llama_cpp", "raglite", "sqlmodel")):
+        if module_name.startswith(("llama_cpp", "weknow", "sqlmodel")):
             monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     # Save the original __import__ function.
@@ -28,9 +28,9 @@ def test_raglite_import_without_llama_cpp(monkeypatch: pytest.MonkeyPatch) -> No
     # Monkey patch __import__ with the fake import function.
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
-    # Verify that importing raglite does not raise an error.
-    import raglite  # noqa: F401
-    from raglite._config import llama_supports_gpu_offload  # type: ignore[attr-defined]
+    # Verify that importing weknow does not raise an error.
+    import weknow  # noqa: F401
+    from weknow._config import llama_supports_gpu_offload  # type: ignore[attr-defined]
 
     # Verify that lazily using llama-cpp-python raises a ModuleNotFoundError.
     with pytest.raises(ModuleNotFoundError, match=r"llama.cpp models"):

@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 import pytest
 from typeguard import ForwardRefPolicy, check_type
 
-from raglite._chatml_function_calling import chatml_function_calling_with_streaming
-from raglite._lazy_llama import (
+from weknow._chatml_function_calling import chatml_function_calling_with_streaming
+from weknow._lazy_llama import (
     Llama,
     llama_supports_gpu_offload,
     llama_types,

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from raglite._markdown import document_to_markdown
+from weknow._markdown import document_to_markdown
 
 
 def test_pdf_with_missing_font_sizes() -> None:

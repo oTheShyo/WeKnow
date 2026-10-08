@@ -50,14 +50,14 @@ from bench_beir import BASE_KWARGS, BM25Evaluator
 from ir_measures import MRR, Recall, ScoredDoc, calc_aggregate, iter_calc, nDCG
 from tqdm.auto import tqdm
 
-from raglite import keyword_search
-from raglite._bench import IREvaluator
-from raglite._config import RAGLiteConfig
-from raglite._graph import CooccurrenceExtractor, GraphConfig, build_graph, graph_search
+from weknow import keyword_search
+from weknow._bench import IREvaluator
+from weknow._config import RAGLiteConfig
+from weknow._graph import CooccurrenceExtractor, GraphConfig, build_graph, graph_search
 
 # `reciprocal_rank_fusion` is not re-exported from the package root; `hybrid_search` is the public
 # entry point, but it insists on the vector path, which has no endpoint on this machine.
-from raglite._search import reciprocal_rank_fusion
+from weknow._search import reciprocal_rank_fusion
 
 DATASET_ID = sys.argv[1] if len(sys.argv) > 1 else "beir/nfcorpus/test"
 NUM_RESULTS = 100

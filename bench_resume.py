@@ -50,9 +50,9 @@ def pct(values: list[float], p: float) -> float:
 
 def bench_chunking(markdown: str) -> dict:
     """Stage-by-stage timing of the real chunking pipeline (no embedding model)."""
-    from raglite._split_chunklets import split_chunklets
-    from raglite._split_chunks import split_chunks
-    from raglite._split_sentences import split_sentences
+    from weknow._split_chunklets import split_chunklets
+    from weknow._split_chunks import split_chunks
+    from weknow._split_sentences import split_sentences
 
     results = {}
     for run in range(5):
@@ -93,9 +93,9 @@ def bench_chunking(markdown: str) -> dict:
 
 def bench_insert(markdown: str) -> dict:
     """insert_documents with mocked embeddings: workers=1 vs workers=4."""
-    import raglite._insert as insert_module
-    from raglite import Document, RAGLiteConfig
-    from raglite._split_sentences import split_sentences as real_split_sentences
+    import weknow._insert as insert_module
+    from weknow import Document, RAGLiteConfig
+    from weknow._split_sentences import split_sentences as real_split_sentences
 
     global _PRECOMPUTED_SENTENCES
     _PRECOMPUTED_SENTENCES = real_split_sentences(markdown, max_len=2048)
@@ -129,7 +129,7 @@ def bench_insert(markdown: str) -> dict:
             ) = original
         db_size_mb = Path(db_url.removeprefix("duckdb:///")).stat().st_size / 1e6
         # Count chunks and chunk embeddings.
-        from raglite._database import Chunk, ChunkEmbedding, create_database_engine
+        from weknow._database import Chunk, ChunkEmbedding, create_database_engine
         from sqlmodel import Session, func, select
 
         with Session(create_database_engine(config)) as session:
@@ -148,9 +148,9 @@ def bench_insert(markdown: str) -> dict:
 
 def bench_search() -> dict:
     """Search latency on the 4-worker database (~10k multi-vectors)."""
-    from raglite import RAGLiteConfig
-    from raglite._database import create_database_engine
-    from raglite._search import (
+    from weknow import RAGLiteConfig
+    from weknow._database import create_database_engine
+    from weknow._search import (
         keyword_search,
         reciprocal_rank_fusion,
         retrieve_chunk_spans,
@@ -158,7 +158,7 @@ def bench_search() -> dict:
         vector_search,
     )
     from sqlmodel import Session, func, select
-    from raglite._database import Chunk, ChunkEmbedding
+    from weknow._database import Chunk, ChunkEmbedding
 
     db_url = "duckdb:///bench_insert_w4.db"
     config = RAGLiteConfig(db_url=db_url, reranker=None, **BASE_KWARGS)
@@ -258,8 +258,8 @@ def bench_search() -> dict:
 
 def main() -> None:
     os.chdir(Path(__file__).parent)
-    from raglite import RAGLiteConfig
-    from raglite._markdown import document_to_markdown
+    from weknow import RAGLiteConfig
+    from weknow._markdown import document_to_markdown
 
     print("Converting PDF to Markdown...")
     t0 = time.perf_counter()

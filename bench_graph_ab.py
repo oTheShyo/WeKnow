@@ -1,4 +1,4 @@
-"""A/B evaluation of the graph-enhanced retrieval path (`raglite._graph`).
+"""A/B evaluation of the graph-enhanced retrieval path (`weknow._graph`).
 
 Question
 --------
@@ -68,9 +68,9 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 import numpy as np
 from sqlmodel import Session, col, select
 
-from raglite import Document, RAGLiteConfig, insert_documents
-from raglite._database import Chunk, create_database_engine
-from raglite._graph import (
+from weknow import Document, RAGLiteConfig, insert_documents
+from weknow._database import Chunk, create_database_engine
+from weknow._graph import (
     CooccurrenceExtractor,
     ExtractedEntity,
     ExtractedRelation,
@@ -235,10 +235,10 @@ class GlossaryExtractor:
 
 def install_offline_models() -> None:
     """Patch the model calls and the file lock that cannot run here."""
-    import raglite._database as database_module
-    import raglite._embed as embed_module
-    import raglite._insert as insert_module
-    import raglite._search as search_module
+    import weknow._database as database_module
+    import weknow._embed as embed_module
+    import weknow._insert as insert_module
+    import weknow._search as search_module
 
     for module in (embed_module, insert_module, search_module):
         module.embed_strings = offline_embed
@@ -276,14 +276,14 @@ def install_extension_loader() -> None:
     """
     from sqlalchemy import event
 
-    import raglite._delete as delete_module
-    import raglite._database as database_module
-    import raglite._eval as eval_module
-    import raglite._graph as graph_module
-    import raglite._incremental as incremental_module
-    import raglite._insert as insert_module2
-    import raglite._iterative_search as iterative_module
-    import raglite._search as search_module2
+    import weknow._delete as delete_module
+    import weknow._database as database_module
+    import weknow._eval as eval_module
+    import weknow._graph as graph_module
+    import weknow._incremental as incremental_module
+    import weknow._insert as insert_module2
+    import weknow._iterative_search as iterative_module
+    import weknow._search as search_module2
 
     original = database_module.create_database_engine
 
@@ -367,7 +367,7 @@ def run_arm(
         graph=replace(config.graph, enabled=graph_enabled),
     )
     probe = replace(probe, graph=replace(probe.graph, enabled=True))
-    from raglite._search import hybrid_search
+    from weknow._search import hybrid_search
 
     rows: list[dict[str, Any]] = []
     for item in QUESTIONS:

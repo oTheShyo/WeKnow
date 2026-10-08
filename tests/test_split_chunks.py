@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from raglite._split_chunks import split_chunks
+from weknow._split_chunks import split_chunks
 
 
 @pytest.mark.parametrize(

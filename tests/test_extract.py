@@ -5,8 +5,8 @@ from typing import Annotated, ClassVar, Literal
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from raglite import Document, RAGLiteConfig
-from raglite._extract import expand_document_metadata, extract_with_llm
+from weknow import Document, RAGLiteConfig
+from weknow._extract import expand_document_metadata, extract_with_llm
 
 
 @pytest.mark.parametrize(

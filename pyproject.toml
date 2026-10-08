@@ -3,9 +3,9 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]  # https://packaging.python.org/en/latest/specifications/pyproject-toml/
-name = "raglite"
+name = "weknow"
 version = "1.1.1"
-description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with DuckDB or PostgreSQL."
+description = "WeKnow: a Retrieval-Augmented Generation (RAG) toolkit with DuckDB or PostgreSQL, based on RAGLite."
 readme = "README.md"
 authors = [
   { name = "Laurent Sorber", email = "laurent@superlinear.eu" },
@@ -47,7 +47,7 @@ dependencies = [
 ]
 
 [project.scripts]  # https://docs.astral.sh/uv/concepts/projects/config/#command-line-interfaces
-raglite = "raglite._cli:cli"
+weknow = "weknow._cli:cli"
 
 [project.urls]  # https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
 homepage = "https://github.com/superlinear-ai/raglite"

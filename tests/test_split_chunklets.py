@@ -2,7 +2,7 @@
 
 import pytest
 
-from raglite._split_chunklets import split_chunklets
+from weknow._split_chunklets import split_chunklets
 
 
 @pytest.mark.parametrize(

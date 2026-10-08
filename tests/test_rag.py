@@ -6,23 +6,23 @@ from typing import Any
 
 import pytest
 
-from raglite import (
+from weknow import (
     RAGLiteConfig,
     add_context,
     retrieve_context,
 )
-from raglite._database import ChunkSpan
-from raglite._rag import _run_tool, rag
-from raglite._typing import MetadataFilter  # noqa: TC001
+from weknow._database import ChunkSpan
+from weknow._rag import _run_tool, rag
+from weknow._typing import MetadataFilter  # noqa: TC001
 
 
-def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
+def test_rag_manual(weknow_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with manual retrieval."""
     # Answer a question with manual RAG.
     user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
-    chunk_spans = retrieve_context(query=user_prompt, config=raglite_test_config)
-    messages = [add_context(user_prompt, context=chunk_spans, config=raglite_test_config)]
-    stream = rag(messages, config=raglite_test_config)
+    chunk_spans = retrieve_context(query=user_prompt, config=weknow_test_config)
+    messages = [add_context(user_prompt, context=chunk_spans, config=weknow_test_config)]
+    stream = rag(messages, config=weknow_test_config)
     answer = ""
     for update in stream:
         assert isinstance(update, str)
@@ -32,13 +32,13 @@ def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
     assert [message["role"] for message in messages] == ["user", "assistant"]
 
 
-def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
+def test_rag_auto_with_retrieval(weknow_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with automatic retrieval."""
     # Answer a question that requires RAG.
     user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper? do not guess and provide me with proof via retrieval"
     messages = [{"role": "user", "content": user_prompt}]
     chunk_spans: list[ChunkSpan] = []
-    stream = rag(messages, on_retrieval=chunk_spans.extend, config=raglite_test_config)
+    stream = rag(messages, on_retrieval=chunk_spans.extend, config=weknow_test_config)
     answer = ""
     for update in stream:
         assert isinstance(update, str)
@@ -49,18 +49,18 @@ def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     assert roles[0] == "user"
     assert roles[-1] == "assistant"
     assert "tool" in roles  # At least one retrieval happened.
-    if not raglite_test_config.llm.startswith("llama-cpp-python"):
+    if not weknow_test_config.llm.startswith("llama-cpp-python"):
         assert chunk_spans
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
 
 
-def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
+def test_rag_auto_without_retrieval(weknow_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with automatic retrieval."""
     # Answer a question that does not require RAG.
     user_prompt = "Is 7 a prime number?"
     messages = [{"role": "user", "content": user_prompt}]
     chunk_spans: list[ChunkSpan] = []
-    stream = rag(messages, on_retrieval=chunk_spans.extend, config=raglite_test_config)
+    stream = rag(messages, on_retrieval=chunk_spans.extend, config=weknow_test_config)
     answer = ""
     for update in stream:
         assert isinstance(update, str)
@@ -70,11 +70,11 @@ def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     assert not chunk_spans
 
 
-def test_retrieve_context_self_query(raglite_test_config: RAGLiteConfig) -> None:
+def test_retrieve_context_self_query(weknow_test_config: RAGLiteConfig) -> None:
     """Test retrieve_context with self_query functionality."""
     from dataclasses import replace
 
-    new_config = replace(raglite_test_config, self_query=True)
+    new_config = replace(weknow_test_config, self_query=True)
     query = "What does Albert Einstein's paper say about time dilation?"
     chunk_spans = retrieve_context(query=query, num_chunks=5, config=new_config)
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
@@ -138,8 +138,8 @@ def test_agentic_search_threads_metadata_filter_to_nested_tool_calls(
         observed_metadata_filters.append(kwargs.get("metadata_filter"))
         return []
 
-    monkeypatch.setattr("raglite._rag.completion", fake_completion)
-    monkeypatch.setattr("raglite._rag._run_tools", fake_run_tools)
+    monkeypatch.setattr("weknow._rag.completion", fake_completion)
+    monkeypatch.setattr("weknow._rag._run_tools", fake_run_tools)
 
     tool_id, chunk_spans = _run_tool(
         search_tool_call,
@@ -175,7 +175,7 @@ def test_query_tool_call_passes_metadata_filter_to_retrieve_context(
         observed_kwargs.update(kwargs)
         return []
 
-    monkeypatch.setattr("raglite._rag.retrieve_context", fake_retrieve_context)
+    monkeypatch.setattr("weknow._rag.retrieve_context", fake_retrieve_context)
 
     tool_id, chunk_spans = _run_tool(
         tool_call,
@@ -245,8 +245,8 @@ def test_sub_agent_deduplicates_chunk_spans_by_chunk_id(
         on_retrieval(tool_results_by_iteration.pop(0))
         return []
 
-    monkeypatch.setattr("raglite._rag.completion", fake_completion)
-    monkeypatch.setattr("raglite._rag._run_tools", fake_run_tools)
+    monkeypatch.setattr("weknow._rag.completion", fake_completion)
+    monkeypatch.setattr("weknow._rag._run_tools", fake_run_tools)
 
     _, chunk_spans = _run_tool(search_tool_call, config)
 
@@ -272,7 +272,7 @@ def test_rag_does_not_mutate_caller_messages_on_stream_error(
         error_message = "stream failure"
         raise RuntimeError(error_message)
 
-    monkeypatch.setattr("raglite._rag._stream_rag_response", fake_stream)
+    monkeypatch.setattr("weknow._rag._stream_rag_response", fake_stream)
 
     with pytest.raises(RuntimeError, match="stream failure"):
         list(rag(messages, config=config))

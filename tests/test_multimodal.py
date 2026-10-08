@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from raglite import (
+from weknow import (
     Document,
     ImageExtraction,
     LiteLLMVLMEngine,
@@ -21,9 +21,9 @@ from raglite import (
     multimodal_to_markdown,
     rasterize_pdf,
 )
-from raglite._config import DEFAULT_VLM_PROMPT
-from raglite._markdown import document_to_markdown
-from raglite._multimodal import NoOCREngine, resolve_ocr_engine, resolve_vlm_engine
+from weknow._config import DEFAULT_VLM_PROMPT
+from weknow._markdown import document_to_markdown
+from weknow._multimodal import NoOCREngine, resolve_ocr_engine, resolve_vlm_engine
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 

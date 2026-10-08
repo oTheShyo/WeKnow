@@ -18,7 +18,7 @@ from pathlib import Path
 import duckdb
 from platformdirs import user_data_dir
 
-db_path = Path(user_data_dir("raglite", ensure_exists=True)) / "graph_beir-nfcorpus.db"
+db_path = Path(user_data_dir("weknow", ensure_exists=True)) / "graph_beir-nfcorpus.db"
 connection = duckdb.connect(db_path.as_posix(), read_only=True)
 edges = connection.execute("SELECT count(*) FROM graph_chunk_relation").fetchone()[0]
 print(f"edges: {edges:,}", flush=True)

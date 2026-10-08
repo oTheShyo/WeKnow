@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from raglite import MistralOCRConfig
-from raglite._mistral_ocr import (
+from weknow import MistralOCRConfig
+from weknow._mistral_ocr import (
     _build_image_annotation_model,
     _process_ocr_response,
     mistral_ocr_to_markdown,

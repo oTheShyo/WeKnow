@@ -18,15 +18,15 @@ import ir_datasets
 from platformdirs import user_data_dir
 from sqlmodel import Session, delete as sa_model_delete
 
-from raglite._config import RAGLiteConfig
-from raglite._database import GraphChunkRelation, create_database_engine
-from raglite._graph import CooccurrenceExtractor, GraphConfig, build_chunk_relations, graph_search
+from weknow._config import RAGLiteConfig
+from weknow._database import GraphChunkRelation, create_database_engine
+from weknow._graph import CooccurrenceExtractor, GraphConfig, build_chunk_relations, graph_search
 
 DB_NAME = "graph_beir-nfcorpus.db"
 CAPS = [4, 8, 16, 32, 64]
 QUERIES = 5
 
-db_path = Path(user_data_dir("raglite", ensure_exists=True)) / DB_NAME
+db_path = Path(user_data_dir("weknow", ensure_exists=True)) / DB_NAME
 dataset = ir_datasets.load("beir/nfcorpus/test")
 queries = [query.text for query in dataset.queries_iter()][:QUERIES]
 

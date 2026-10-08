@@ -1,6 +1,6 @@
 """Why the graph writers stage rows through a CSV buffer instead of using parameters.
 
-This is the evidence behind `raglite._graph._staged_rows`. It exists because the obvious choices all
+This is the evidence behind `weknow._graph._staged_rows`. It exists because the obvious choices all
 look right and all fail on DuckDB 1.5.5, and the failure is not where you would look for it.
 
 Four shapes are timed against a table with the real `graph_relation` primary key, at the row count
@@ -8,7 +8,7 @@ NFCorpus actually produces (22,285 merged edges; `RUST_ROWS` can be raised to 69
 scaling past the corpus):
 
   A. `executemany`                      - what the ORM unit of work does underneath, and what
-                                          `raglite._insert.insert_documents` uses directly
+                                          `weknow._insert.insert_documents` uses directly
   B. parametrised `INSERT ... VALUES`   - the safe, idiomatic bulk insert
   C. parametrised `INSERT ... SELECT FROM (VALUES ...)`
   D. literal `INSERT ... SELECT FROM (VALUES ...)` - unsafe by hand, but set-based
