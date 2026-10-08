@@ -53,12 +53,56 @@ def _sse(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+# DuckDB allows a single writer at a time, and the SQLAlchemy connection pool hands out a new
+# connection per request. A background insert thread holding a write transaction while a request
+# thread opens another connection deadlocks the whole process (observed: the server stopped
+# answering within seconds of an upload). Serialise every database operation through one lock, and
+# share one engine so the pool cannot multiply connections.
+_DB_LOCK = threading.Lock()
+_ENGINES: dict[int, Any] = {}
+
+
+def _get_engine(config: Any) -> Any:
+    """Return the process-wide engine for this config's database URL."""
+    from weknow._database import create_database_engine
+
+    key = id(config.db_url) if not isinstance(config.db_url, str) else hash(config.db_url)
+    with _DB_LOCK:
+        engine = _ENGINES.get(key)
+        if engine is None:
+            engine = create_database_engine(config)
+            _ENGINES[key] = engine
+        return engine
+
+
+class _DbSession:
+    """A Session under the process-wide database lock.
+
+    Use as a context manager: `with _db_session(config) as session: ...`. The lock is what keeps
+    DuckDB happy with concurrent requests; the shared engine keeps the pool to one connection.
+    """
+
+    def __init__(self, config: Any) -> None:
+        from sqlmodel import Session
+
+        self._session = Session(_get_engine(config))
+
+    def __enter__(self) -> Any:
+        _DB_LOCK.acquire()
+        return self._session
+
+    def __exit__(self, *exc: Any) -> None:
+        with contextlib.suppress(Exception):
+            self._session.close()
+        _DB_LOCK.release()
+
+
 def _insert_in_background(task_id: str, tmp_path: Path) -> None:
     """Insert an uploaded document off the request path, updating the task as it goes."""
-    from sqlmodel import Session, select
+    from sqlmodel import select
 
     from weknow import Document, insert_documents
-    from weknow._database import create_database_engine
+    from weknow._database import Document as DocumentRow
 
     try:
         _task_update(task_id, status="parsing")
@@ -66,9 +110,7 @@ def _insert_in_background(task_id: str, tmp_path: Path) -> None:
         document = Document.from_path(tmp_path, config=config)
         # `insert_documents` silently skips documents whose content hash is already present,
         # so report that case explicitly instead of claiming success.
-        from weknow._database import Document as DocumentRow
-
-        with Session(create_database_engine(config)) as session:
+        with _DbSession(config) as session:
             exists = (
                 session.exec(
                     select(DocumentRow.id).where(DocumentRow.id == document.id)  # type: ignore[arg-type]
@@ -112,12 +154,12 @@ def index() -> HTMLResponse:
 @app.get("/api/documents")
 def list_documents() -> dict[str, Any]:
     """List every document in the knowledge base, with its chunk count."""
-    from sqlmodel import Session, select
+    from sqlmodel import select
 
-    from weknow._database import Chunk, Document, create_database_engine
+    from weknow._database import Chunk, Document
 
-    engine = create_database_engine(_get_config())
-    with Session(engine) as session:
+    config = _get_config()
+    with _DbSession(config) as session:
         documents = session.exec(select(Document)).all()
         chunk_counts: dict[str, int] = {}
         for document_id in session.exec(select(Chunk.document_id)).all():
@@ -165,7 +207,10 @@ def delete_document(doc_id: str) -> dict[str, str]:
     """Delete a document and all of its chunks and embeddings."""
     from weknow import delete_documents
 
-    delete_documents([doc_id], config=_get_config())
+    # `delete_documents` opens its own sessions internally, so hold the process-wide lock across
+    # the whole call rather than wrapping a session here.
+    with _DB_LOCK:
+        delete_documents([doc_id], config=_get_config())
     return {"deleted": doc_id}
 
 
@@ -175,8 +220,11 @@ def search(request: SearchRequest) -> dict[str, Any]:
     from weknow import hybrid_search, retrieve_chunks
 
     config = _get_config()
-    chunk_ids, scores = hybrid_search(request.query, config=config)
-    chunks = retrieve_chunks(chunk_ids[: request.top_k], config=config)
+    # Both calls open sessions internally (the search functions take a Session per query), so hold
+    # the process-wide lock across both.
+    with _DB_LOCK:
+        chunk_ids, scores = hybrid_search(request.query, config=config)
+        chunks = retrieve_chunks(chunk_ids[: request.top_k], config=config)
     results = [
         {
             "document_id": str(chunk.document_id),
@@ -200,12 +248,18 @@ def chat(request: ChatRequest) -> StreamingResponse:
     def stream() -> Any:
         from weknow import rag
 
-        try:
-            for token in rag(messages, on_retrieval=chunk_spans.extend, config=config):
-                yield _sse({"token": token})
-        except Exception as exc:  # noqa: BLE001
-            yield _sse({"error": str(exc)[:300]})
-            return
+        # `rag` is a generator that interleaves DB access (the agentic retrieval rounds) with pure
+        # LLM calls, and the two cannot be separated from outside. Hold the process-wide lock for
+        # the whole answer: this server is single-user, so serialising concurrent answers costs
+        # nothing, whereas letting two answers interleave their retrieval rounds deadlocks DuckDB
+        # (observed: the server stopped answering within seconds of an upload).
+        with _DB_LOCK:
+            try:
+                for token in rag(messages, on_retrieval=chunk_spans.extend, config=config):
+                    yield _sse({"token": token})
+            except Exception as exc:  # noqa: BLE001
+                yield _sse({"error": str(exc)[:300]})
+                return
         sources = [
             {
                 "index": i + 1,
