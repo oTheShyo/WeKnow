@@ -10,6 +10,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from raglite._config import RAGLiteConfig
 
 
+def _llama_cpp_is_available() -> bool:
+    """Return whether `llama-cpp-python` is importable."""
+    import importlib.util
+
+    return importlib.util.find_spec("llama_cpp") is not None
+
+
+def _default_database_url() -> str:
+    """Return the default database URL without resolving the model defaults.
+
+    `RAGLiteConfig()` evaluates its `llm` and `embedder` default factories, which lazily import
+    `llama_cpp` and therefore crash on any machine without that extra. The CLI only needs the
+    database URL here, so read it off the dataclass field instead of instantiating the config —
+    otherwise `raglite --help` is unusable without `llama-cpp-python` installed.
+    """
+    return str(RAGLiteConfig.__dataclass_fields__["db_url"].default)  # type: ignore[attr-defined]
+
+
 class RAGLiteCLIConfig(BaseSettings):
     """RAGLite CLI config."""
 
@@ -18,9 +36,16 @@ class RAGLiteCLIConfig(BaseSettings):
     )
 
     mcp_server_name: str = "RAGLite"
-    db_url: str = str(RAGLiteConfig().db_url)
-    llm: str = RAGLiteConfig().llm
-    embedder: str = RAGLiteConfig().embedder
+    db_url: str = _default_database_url()
+    # The CLI declares its options at import time and therefore cannot defer to `RAGLiteConfig`'s
+    # lazy default factories. Fall back to an OpenAI-compatible model so that `raglite --help`
+    # works without `llama-cpp-python`; the real default is still used when it is installed.
+    llm: str = (
+        RAGLiteConfig().llm if _llama_cpp_is_available() else "openai/gpt-4o-mini"
+    )
+    embedder: str = (
+        RAGLiteConfig().embedder if _llama_cpp_is_available() else "openai/text-embedding-3-small"
+    )
 
 
 cli = typer.Typer()
