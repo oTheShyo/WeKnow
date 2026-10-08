@@ -197,10 +197,26 @@ uv sync --python 3.11                                             # 别用 3.13�
 | 元数据过滤 / self-query | `_search.py` `_self_query` | LLM 抽过滤条件 |
 | MCP Server / CLI / Chainlit 前端 | `_mcp.py` / `_cli.py` / `_chainlit.py` | Claude Desktop 可直连 |
 | Pandoc 转换（可选） | 上游 extra，现被注册表包裹 | 扩展 #1 的一个引擎 |
-| Mistral OCR（可选） | `_mistral_ocr.py` | 扩展 #1 的一个引擎 |
+| Mistral OCR（可选） | `_mistral_ocr.py` | 扩展 #1 的一个引擎，见下方与扩展 #2 的对比 |
 | Ragas 评测（可选） | `_eval.py` | 检索 + 生成 |
 
 > 本项目 8 项扩展与这张表的关系：#1 把「Pandoc / Mistral OCR / 内置解析」统一成注册表并**新写了 28 格式 builtin**；#2 是上游没有的多模态处理；#3–#8 均为上游没有的能力。面试里交代来源边界，用这一段就够。
+
+**易混点：Mistral OCR 与扩展 #2 是否重复？** 不重复。两者都做「图片里的文字 + 图片在讲什么」，但实现路径与工程属性完全不同：
+
+| 维度 | Mistral OCR（上游） | 多模态 ②（自研） |
+|---|---|---|
+| 运行位置 | 云端 API（`client.ocr.process`） | **可完全本地**（RapidOCR 为离线 ONNX） |
+| 依赖 | `mistralai` + `MISTRAL_API_KEY` | 可选；`vlm=None` 时零 API |
+| 两阶段关系 | **单次调用内一体完成**（`bbox_annotation_format` 顺带出图片标注） | **两个独立阶段**，各自可成败 |
+| 失败行为 | 任一环节失败 → 抛 `MistralOCRError`，整文档失败 | **双路独立降级**（OCR 挂→继续用描述；描述挂→继续用 OCR） |
+| 覆盖格式 | pdf / png / jpg / jpeg / avif / webp / docx / pptx | 图片 8 类 + pdf（逐页栅格化） |
+| 可测性 | 需联网或 mock，无法离线单测 | `OCREngine` / `VLMEngine` 为 Protocol，可注入测试替身 |
+| 粒度 | 文档级 | 页级 / 图片级，`extraction_max_workers` 并发 |
+
+真正的差异是三点上游做不到的：**① 离线**（`vlm=None` 时全链路零网络）；**② 降级语义**（`extract_image` 里两段 `try/except` 让两种模态互不拖累）；**③ 可注入**（两个引擎都是 Protocol，测试可离线、用户可替换）。反过来说 Mistral 原生吃 docx / pptx 的结构化内容，而 ② 的 docx / pptx 走 builtin 解容器、只有图片进多模态链——两者在 docx/pptx 上是**真的不同路径**。
+
+> 简历/答辩措辞：**不要写「我做了 OCR + VLM」**（与上游撞车）。写「上游 Mistral OCR 依赖云端且失败即整体失败；我另外实现了**可离线、可注入**的双阶段多模态处理，两路独立降级，让图片与扫描件在无网络环境下也能入库」，并保留一句「与 Mistral 引擎同属解析注册表的两个 engine」以说明关系。
 
 ---
 
@@ -319,6 +335,8 @@ def _preferred_parser_engine(doc_path: Path, config: RAGLiteConfig) -> str | Non
 ### 4.2 多模态 OCR + VLM
 
 **目的**：图片和扫描件里，OCR 拿得到「印在图像里的文字」，但拿不到「图表/示意图在讲什么」。用两个独立阶段互补，且都**可注入、可独立降级**。
+
+> **与上游 Mistral OCR 的分工**：Mistral 是云 API、单次调用内一体完成、失败即整文档失败；本扩展是把这件事拆成**两条可独立成败的本地路径**，核心增量是**离线能力 + 降级语义 + 引擎可注入**。逐项对比见 §2.3。两者同属解析注册表的两个 engine，选哪个取决于「是否有网」与「能否接受整文档失败」。
 
 **用法**：
 
