@@ -1,6 +1,6 @@
 # WeKnow 完整教程（附源码）
 
-> 本教程覆盖**本仓库**（`D:/2026/raglite-main`，代号 WeKnow）的全部能力：上游 RAGLite 1.1.1 的检索内核 + 本项目二次开发的 **8 项工程扩展**，每一节都给出 `src/raglite/` 里的真实源码摘录与可运行示例。
+> 本教程覆盖**本仓库**（`D:/2026/raglite-main`，代号 WeKnow）的全部能力：上游 RAGLite 1.1.1 的检索内核 + 本项目二次开发的 **8 项工程扩展**，每一节都给出 `src/raglite/` 里的真实源码摘录与可运行示例。  
 > 定位：读完能独立跑通「解析 → 切分 → 建库 → 增量 → 检索 → 重排 → 生成 → 评测」全链路，并说清每个设计决策与它的边界。
 >
 > 配套文档：`图增强检索-BEIR评测.md`（图增强的标准基准消融）、`图增强检索-AB评测.md`（自建题集的 A/B）、`复现指南-实测数据.md`（数字怎么来的）、`个人知识库RAG-简历.md`（简历口径）。
@@ -45,29 +45,29 @@ WeKnow 是一个**进程内、可嵌入、零外部服务**的个人知识库 RA
 
 一句话：**把异构文档解析、三层最优切分、混合检索、图增强、增量索引、评测全部收进一个单文件数据库 + 本地小模型就能跑通的引擎里。**
 
-| 维度 | 选择 | 说明 |
-|---|---|---|
-| 向量库 | DuckDB VSS（HNSW） | 单文件、进程内、可嵌入；**没有独立向量数据库** |
-| 全文检索 | DuckDB FTS（BM25） | 原生扩展 |
-| 图存储 | 复用 DuckDB 表 | 无 Neo4j、无 APOC、零新服务 |
-| Embedder | LiteLLM 任意 / llama.cpp 本地 | 默认 `bge-m3` GGUF |
-| LLM | LiteLLM 任意 / llama.cpp 本地 | 默认 `Qwen3` GGUF |
-| 重排 | FlashRank（Cross-Encoder） | `ms-marco-MiniLM-L-12-v2`（英）/ `MultiBERT`（其他） |
-| 切分 | SaT ONNX + 动态规划 + 0-1 整数规划 | 三层最优切分 |
-| 对外接口 | Python API + CLI + MCP Server | 可接 Claude Desktop |
+| 维度       | 选择                            | 说明                                            |
+| -------- | ----------------------------- | --------------------------------------------- |
+| 向量库      | DuckDB VSS（HNSW）              | 单文件、进程内、可嵌入；**没有独立向量数据库**                     |
+| 全文检索     | DuckDB FTS（BM25）              | 原生扩展                                          |
+| 图存储      | 复用 DuckDB 表                   | 无 Neo4j、无 APOC、零新服务                           |
+| Embedder | LiteLLM 任意 / llama.cpp 本地     | 默认 `bge-m3` GGUF                              |
+| LLM      | LiteLLM 任意 / llama.cpp 本地     | 默认 `Qwen3` GGUF                               |
+| 重排       | FlashRank（Cross-Encoder）      | `ms-marco-MiniLM-L-12-v2`（英）/ `MultiBERT`（其他） |
+| 切分       | SaT ONNX + 动态规划 + 0-1 整数规划    | 三层最优切分                                        |
+| 对外接口     | Python API + CLI + MCP Server | 可接 Claude Desktop                             |
 
 ### 8 项二次开发扩展一览
 
-| # | 扩展 | 模块 | 解决的问题 |
-|---|---|---|---|
-| 1 | 解析引擎注册表 | `_parsers.py` | 28 类异构格式统一解析 + 外部引擎三级降级 |
-| 2 | 多模态 OCR + VLM | `_multimodal.py` | 图片与扫描件里的文字与图表信息 |
-| 3 | 低置信度二次检索 | `_iterative_search.py` | 首轮检索没把握时扩池重排 |
-| 4 | 内容哈希增量索引 | `_incremental.py` | 只重建变更文档，避免全量重建 |
-| 5 | 查询意图路由 | `_router.py` | 微秒级把查询分流到 BM25 / 混合 |
-| 6 | 分层缓存 | `_cache.py` | L1 查询向量缓存 + TTL 结果缓存 |
-| 7 | 生成端评估 | `_eval_generation.py` | 零依赖 ROUGE-L / BLEU |
-| 8 | 图增强检索 | `_graph.py` | 实体图 + chunk 图投影作为 RRF 第三条加权路径 |
+| # | 扩展            | 模块                     | 解决的问题                         |
+| - | ------------- | ---------------------- | ----------------------------- |
+| 1 | 解析引擎注册表       | `_parsers.py`          | 28 类异构格式统一解析 + 外部引擎三级降级       |
+| 2 | 多模态 OCR + VLM | `_multimodal.py`       | 图片与扫描件里的文字与图表信息               |
+| 3 | 低置信度二次检索      | `_iterative_search.py` | 首轮检索没把握时扩池重排                  |
+| 4 | 内容哈希增量索引      | `_incremental.py`      | 只重建变更文档，避免全量重建                |
+| 5 | 查询意图路由        | `_router.py`           | 微秒级把查询分流到 BM25 / 混合           |
+| 6 | 分层缓存          | `_cache.py`            | L1 查询向量缓存 + TTL 结果缓存          |
+| 7 | 生成端评估         | `_eval_generation.py`  | 零依赖 ROUGE-L / BLEU            |
+| 8 | 图增强检索         | `_graph.py`            | 实体图 + chunk 图投影作为 RRF 第三条加权路径 |
 
 ---
 
@@ -92,6 +92,7 @@ uv sync --python 3.11                                             # 别用 3.13�
 ```
 
 > ⚠️ 本机 `.venv` 由 uv 创建（**没有 pip**），单独装包请用：
+>
 > ```bash
 > UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple uv pip install <pkg>
 > ```
@@ -154,24 +155,52 @@ uv sync --python 3.11                                             # 别用 3.13�
 
 ### 2.2 模块地图
 
-| 文件 | 职责 | 行数 |
+| 文件                                                                 | 职责                                                               | 行数              |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------- | --------------- |
+| `_parsers.py`                                                      | **解析引擎注册表**：`(engine, file_type)→parser` + 三级回退 + 28 类格式 builtin | 1129            |
+| `_multimodal.py`                                                   | **OCR + VLM** 双阶段图片/扫描件提取                                        | 672             |
+| `_graph.py`                                                        | **图增强**：实体/关系抽取、PMI 加权、chunk 图投影、查询期扩散                           | 1491            |
+| `_search.py`                                                       | vector / keyword / hybrid / RRF / rerank / chunk span            | 605             |
+| `_config.py`                                                       | `RAGLiteConfig` / `GraphConfig` / `MultimodalConfig`             | 277             |
+| `_incremental.py`                                                  | **内容哈希增量索引**（`sync_documents` / `diff_documents`）                | 216             |
+| `_router.py`                                                       | **查询意图路由**（启发式，无 LLM）                                            | 64              |
+| `_cache.py`                                                        | **分层缓存**（TTL + 有界）                                               | 116             |
+| `_iterative_search.py`                                             | **低置信度二次检索**                                                     | 121             |
+| `_eval_generation.py`                                              | **生成端评估**（ROUGE-L / BLEU，零依赖）                                    | 139             |
+| `_markdown.py`                                                     | 文档 → GitHub Flavored Markdown（接入注册表）                             | —               |
+| `_insert.py`                                                       | 入库编排（线程池 + 批量 flush）                                             | 275             |
+| `_database.py`                                                     | SQLModel 表定义 + 引擎创建（FTS/VSS 装载）                                  | 745             |
+| `_embed.py`                                                        | 多向量嵌入：late chunking + 标题增强                                       | 205             |
+| `_rag.py`                                                          | `retrieve_context` / `add_context` / `rag` / `async_rag`         | 590             |
+| `_split_sentences.py` / `_split_chunklets.py` / `_split_chunks.py` | 三层切分                                                             | 219 / 184 / 122 |
+
+### 2.3 上游 RAGLite 1.1.1 内核能力清单（别误记为自研）
+
+下表逐项对应上游 README 的 Features，标注代码位置。**这些能力全部是上游既有**，二次开发没有重写它们，只是在旁边扩展：
+
+| 上游能力 | 代码位置 | 说明 |
 |---|---|---|
-| `_parsers.py` | **解析引擎注册表**：`(engine, file_type)→parser` + 三级回退 + 28 类格式 builtin | 1129 |
-| `_multimodal.py` | **OCR + VLM** 双阶段图片/扫描件提取 | 672 |
-| `_graph.py` | **图增强**：实体/关系抽取、PMI 加权、chunk 图投影、查询期扩散 | 1491 |
-| `_search.py` | vector / keyword / hybrid / RRF / rerank / chunk span | 605 |
-| `_config.py` | `RAGLiteConfig` / `GraphConfig` / `MultimodalConfig` | 277 |
-| `_incremental.py` | **内容哈希增量索引**（`sync_documents` / `diff_documents`） | 216 |
-| `_router.py` | **查询意图路由**（启发式，无 LLM） | 64 |
-| `_cache.py` | **分层缓存**（TTL + 有界） | 116 |
-| `_iterative_search.py` | **低置信度二次检索** | 121 |
-| `_eval_generation.py` | **生成端评估**（ROUGE-L / BLEU，零依赖） | 139 |
-| `_markdown.py` | 文档 → GitHub Flavored Markdown（接入注册表） | — |
-| `_insert.py` | 入库编排（线程池 + 批量 flush） | 275 |
-| `_database.py` | SQLModel 表定义 + 引擎创建（FTS/VSS 装载） | 745 |
-| `_embed.py` | 多向量嵌入：late chunking + 标题增强 | 205 |
-| `_rag.py` | `retrieve_context` / `add_context` / `rag` / `async_rag` | 590 |
-| `_split_sentences.py` / `_split_chunklets.py` / `_split_chunks.py` | 三层切分 | 219 / 184 / 122 |
+| LiteLLM 接任意 LLM / Embedder | `_litellm.py` / `_embed.py` | 含本地 `llama-cpp-python` 量化模型 |
+| DuckDB 或 PostgreSQL 二选一 | `_database.py` `create_database_engine` | PG 走 `pgvector` + `tsvector` |
+| 任意重排器（默认 FlashRank） | `_config.py` `reranker` 字段 / `_search.py` | `rerankers` 库接口 |
+| 轻依赖（无 PyTorch / LangChain） | `pyproject.toml` | Metal / CUDA 由 llama.cpp 提供 |
+| PDF → Markdown | `_markdown.py` `parsed_pdf_to_markdown` | `pdftext` + `pypdfium2` |
+| 多向量嵌入（late chunking + 上下文标题） | `_embed.py` | 检索期 L∞ 聚合 |
+| 最优句切分（SaT + 整数规划） | `_split_sentences.py` | wtpsplit-lite SaT + BIP |
+| 最优语义分块（整数规划） | `_split_chunklets.py` / `_split_chunks.py` | DP chunklet + BIP 分块 |
+| 混合检索（FTS + VSS） | `_search.py` `vector_search` / `keyword_search` | DuckDB 原生扩展 |
+| RRF 融合 | `_search.py` `reciprocal_rank_fusion` | `k=60` |
+| 重排 + chunk span 回拼 | `_search.py` `rerank_chunks` / `retrieve_chunk_spans` | 邻居扩展 + 连续分组 |
+| 自适应检索（LLM 决定是否/检索什么） | `_rag.py` `rag` | `agentic_iterations=3` |
+| Prompt 缓存感知的消息数组 + 长上下文格式 | `_rag.py` `add_context` | 降低成本、提升长文质量 |
+| 闭式 Query Adapter（正交 Procrustes） | `_query_adapter.py` `update_query_adapter` | 推理期零开销 |
+| 元数据过滤 / self-query | `_search.py` `_self_query` | LLM 抽过滤条件 |
+| MCP Server / CLI / Chainlit 前端 | `_mcp.py` / `_cli.py` / `_chainlit.py` | Claude Desktop 可直连 |
+| Pandoc 转换（可选） | 上游 extra，现被注册表包裹 | 扩展 #1 的一个引擎 |
+| Mistral OCR（可选） | `_mistral_ocr.py` | 扩展 #1 的一个引擎 |
+| Ragas 评测（可选） | `_eval.py` | 检索 + 生成 |
+
+> 本项目 8 项扩展与这张表的关系：#1 把「Pandoc / Mistral OCR / 内置解析」统一成注册表并**新写了 28 格式 builtin**；#2 是上游没有的多模态处理；#3–#8 均为上游没有的能力。面试里交代来源边界，用这一段就够。
 
 ---
 
@@ -267,7 +296,9 @@ class ParserEngineRegistry:
             return fallback.parse(doc_path, config=config)
 ```
 
+
 **关键设计**：
+
 - builtin 覆盖 `md / pdf / html / csv / docx / pptx / xlsx / epub / 图片`，其中 **docx/pptx/xlsx/epub 用标准库 `zipfile` + `ElementTree` 直接解 OOXML/OCF 容器**，所以**零新增依赖**；
 - `ImageParser` 会在没有多模态处理器时**抛错而不是把二进制图当文本读**（防止静默产出乱码）；
 - 产物是 `ParsedDocument{content, images, engine, file_type}`，`_markdown.document_to_markdown` 根据 config 判断该用哪个引擎：
@@ -338,6 +369,7 @@ def resolve_vlm_engine(processor_config: MultimodalConfig) -> VLMEngine | None:
 ```
 
 **关键设计**：
+
 - 默认提示词刻意要求「先逐字转写文本（弥补 OCR 漏字），再描述图表内容」，是**面向检索的标注**而非自由散文：
 
 ```python
@@ -388,7 +420,7 @@ if np.any(nonoutlying_chunklets):
 # 用 linprog 求解 0-1 整数规划，最小化「在何处切」的相似度代价
 ```
 
-**实测**（96k 字符文档）：**SaT ~2.9s / chunklet DP 93ms / BIP 14ms**，714 句 → 198 chunklets → 58 chunks。
+**实测**（96k 字符文档）：**SaT ~2.9s / chunklet DP 93ms / BIP 14ms**，714 句 → 198 chunklets → 58 chunks。  
 ⚠️ SaT 段对机器负载极度敏感（空载 2.9s ↔ load=68 时 11.2s），引用该数字必须标注负载。
 
 ### 4.4 多向量嵌入与混合建库
@@ -408,6 +440,7 @@ statement = (select(top_vectors.c.chunk_id, sim_norm)
 **建库**：`documents` / `chunk` / `chunk_embedding(FLOAT[N])` 落在**同一个 DuckDB 文件**里；`chunk` 表上建 FTS(BM25) 索引，`chunk_embedding` 上建 VSS(HNSW) 索引。向量维度由 `ChunkEmbedding.set_embedding_dim()` 在运行时确定。
 
 > ⚠️ **HNSW 命中与否取决于查询投影形状**（面试高频）。实测用真实 1536 维向量逐项 `EXPLAIN`：
+>
 > - 只投影距离 `dist` → `HNSW_INDEX_SCAN` ✅
 > - 上游 `vector_search` 同时投影 `sim = 1.0 - dist` 与 `dist` → `SEQ_SCAN` ❌
 >
@@ -461,6 +494,7 @@ if config.graph.enabled and (report["inserted"] or report["deleted"]):
 ```
 
 **关键设计**：`key` 决定「什么算同一文档」：
+
 - `key="id"`：内容哈希即身份，变更文档看起来像新文档，需 `prune=True` 才删旧版；
 - `key="filename"`（**热更新推荐**）：同名文件即同一文档，内容变了会被识别为「同一文档新哈希」，自动替换。
 
@@ -535,6 +569,7 @@ if reranker:
         return reranked_chunks, rerank_scores
 return chunks, None
 ```
+
 
 ### 5.2 查询意图路由
 
@@ -806,6 +841,7 @@ def bleu_n(reference: str, hypothesis: str, *, max_n: int = 4) -> float:
     return math.exp(bp + sum(log_precisions) / max_n)
 ```
 
+
 用法（可传预生成答案，也可给 config 让它现场生成）：
 
 ```python
@@ -823,27 +859,28 @@ print(report["mean_rouge_l"], report["mean_bleu"])
 
 **方法**：用 `ir_datasets` 取标准基准，`ir_measures` 算指标（RR@10 / nDCG@10 / nDCG@100 / R@100），**配对 bootstrap（10000 次重采样，seed 20260929，95% CI）** 做显著性检验。评测脚本 `bench_beir_graph.py` 跑六臂：
 
-| 臂 | 含义 |
-|---|---|
-| `bm25` | 纯 BM25 基线 |
-| `rrf_w0.1` / `rrf_w0.3` / `rrf_w1` | 图路 RRF 权重 0.1 / 0.3 / 1.0 |
-| `rrf_w0.3_dedup` | 权重 0.3 + `filterSeenChunk` 去重 |
-| `graph_only` | 只用图路 |
+| 臂                                  | 含义                            |
+| ---------------------------------- | ----------------------------- |
+| `bm25`                             | 纯 BM25 基线                     |
+| `rrf_w0.1` / `rrf_w0.3` / `rrf_w1` | 图路 RRF 权重 0.1 / 0.3 / 1.0     |
+| `rrf_w0.3_dedup`                   | 权重 0.3 + `filterSeenChunk` 去重 |
+| `graph_only`                       | 只用图路                          |
 
 **基线可信度**：脚本 `bm25` 臂与独立的纯 BM25 脚本**四位小数一致**（NFCorpus 0.3181 / SciFact 0.6730），并对齐 Anserini flat（NFCorpus 0.3218、SciFact 0.673）。
 
 **结果（nDCG@10）**：
 
-| 臂 | NFCorpus（3633 文档 / 323 查询） | SciFact（5183 文档 / 300 查询） |
-|---|---|---|
-| bm25 | **0.3181** | **0.6730** |
-| rrf_w0.1 | 0.3172 | 0.6329 |
-| rrf_w0.3 | 0.3052 | 0.5511 |
-| rrf_w1 | 0.2503 | 0.3628 |
-| rrf_w0.3_dedup | 0.3192 | 0.6730（= bm25，逐位相同） |
-| graph_only | 0.1459 | 0.1105 |
+| 臂              | NFCorpus（3633 文档 / 323 查询） | SciFact（5183 文档 / 300 查询） |
+| -------------- | -------------------------- | ------------------------- |
+| bm25           | **0.3181**                 | **0.6730**                |
+| rrf_w0.1       | 0.3172                     | 0.6329                    |
+| rrf_w0.3       | 0.3052                     | 0.5511                    |
+| rrf_w1         | 0.2503                     | 0.3628                    |
+| rrf_w0.3_dedup | 0.3192                     | 0.6730（= bm25，逐位相同）       |
+| graph_only     | 0.1459                     | 0.1105                    |
 
 **唯一稳定的结论**：
+
 1. NFCorpus 上图路最多「打平」（R@100 有微小提升但 nDCG@10 略降）；
 2. SciFact 上 **w=0.1 就已经显著掉精度**（nDCG@10 −0.0401），召回提升**不显著**（CI 触 0）；
 3. `dedup` 在 SciFact 上把图路变成**恒等变换**（所有 delta 都是 `0.0000 [0,0]`）——因为它没带来新 chunk；
@@ -855,14 +892,14 @@ print(report["mean_rouge_l"], report["mean_bleu"])
 
 ### 6.4 延迟基准
 
-| 指标 | 实测值 | 口径 |
-|---|---|---|
-| 切分全链路 | ~3.0s（SaT 2.9 / DP 0.09 / BIP 0.014） | 96k 字符，mock embedding |
-| HNSW 构建 | 26.6s（文件库）/ 14.0s（内存） | 10k×1536 |
-| FlashRank 重排 | P50 923.1ms / P95 1042.5ms | 20 候选，**未做 warmup 剥离** |
-| BM25 top-20 | P50 17.5ms / P95 25.5ms | 50 次真实查询 |
-| RRF 融合 | P50 0.01ms | 200 次 |
-| chunk span 组装 | P50 57.6ms | 8 命中 + 邻居 |
+| 指标            | 实测值                                  | 口径                     |
+| ------------- | ------------------------------------ | ---------------------- |
+| 切分全链路         | ~3.0s（SaT 2.9 / DP 0.09 / BIP 0.014） | 96k 字符，mock embedding  |
+| HNSW 构建       | 26.6s（文件库）/ 14.0s（内存）                | 10k×1536               |
+| FlashRank 重排  | P50 923.1ms / P95 1042.5ms           | 20 候选，**未做 warmup 剥离** |
+| BM25 top-20   | P50 17.5ms / P95 25.5ms              | 50 次真实查询               |
+| RRF 融合        | P50 0.01ms                           | 200 次                  |
+| chunk span 组装 | P50 57.6ms                           | 8 命中 + 邻居              |
 
 > 引用 923ms 时必须同时说明「未剥离 warmup」；本机负载不稳定（同脚本两次差 3.5–15 倍），重测需在空载机器上进行。
 
@@ -872,49 +909,49 @@ print(report["mean_rouge_l"], report["mean_bleu"])
 
 ### `RAGLiteConfig`（检索/生成相关）
 
-| 字段 | 默认 | 含义 |
-|---|---|---|
-| `db_url` | `duckdb:///~/.cache/raglite/raglite.db` | DuckDB / PostgreSQL 连接串 |
-| `llm` / `embedder` | 本地 Qwen3 / bge-m3 GGUF | **务必显式传字符串**，避免惰性导入 llama_cpp |
-| `chunk_max_size` | 2048 | 单 chunk 最大字符数 |
-| `document_processor` | `None` | `MultimodalConfig` 或 `MistralOCRConfig` |
-| `parser_engine` | `None` | 偏好引擎；`None` 让注册表选（落到 builtin） |
-| `vector_search_multivector` | `True` | 多向量（late chunking） |
-| `vector_search_query_adapter` | `True` | Query Adapter 修正 query 向量 |
-| `search_method` | `_vector_search` | **默认纯向量**，非混合 |
-| `hybrid_vector_weight` / `hybrid_keyword_weight` / `hybrid_graph_weight` | 0.75 / 0.25 / 0.1 | RRF 三路权重 |
-| `secondary_retrieval` | `True` | 低置信度二次检索总开关 |
-| `rerank_confidence_threshold` | 0.3 | 触发二次检索的重排分阈值 |
-| `secondary_retrieval_multiplier` | 2 | 二次检索扩池倍数 |
-| `search_router` | `False` | 启用查询意图路由 |
-| `retrieval_cache_ttl` | 300.0 | L2 结果缓存 TTL（秒） |
-| `retrieval_cache_max_size` | 256 | L2 结果缓存条目上限 |
+| 字段                                                                       | 默认                                      | 含义                                      |
+| ------------------------------------------------------------------------ | --------------------------------------- | --------------------------------------- |
+| `db_url`                                                                 | `duckdb:///~/.cache/raglite/raglite.db` | DuckDB / PostgreSQL 连接串                 |
+| `llm` / `embedder`                                                       | 本地 Qwen3 / bge-m3 GGUF                  | **务必显式传字符串**，避免惰性导入 llama_cpp           |
+| `chunk_max_size`                                                         | 2048                                    | 单 chunk 最大字符数                           |
+| `document_processor`                                                     | `None`                                  | `MultimodalConfig` 或 `MistralOCRConfig` |
+| `parser_engine`                                                          | `None`                                  | 偏好引擎；`None` 让注册表选（落到 builtin）           |
+| `vector_search_multivector`                                              | `True`                                  | 多向量（late chunking）                      |
+| `vector_search_query_adapter`                                            | `True`                                  | Query Adapter 修正 query 向量               |
+| `search_method`                                                          | `_vector_search`                        | **默认纯向量**，非混合                           |
+| `hybrid_vector_weight` / `hybrid_keyword_weight` / `hybrid_graph_weight` | 0.75 / 0.25 / 0.1                       | RRF 三路权重                                |
+| `secondary_retrieval`                                                    | `True`                                  | 低置信度二次检索总开关                             |
+| `rerank_confidence_threshold`                                            | 0.3                                     | 触发二次检索的重排分阈值                            |
+| `secondary_retrieval_multiplier`                                         | 2                                       | 二次检索扩池倍数                                |
+| `search_router`                                                          | `False`                                 | 启用查询意图路由                                |
+| `retrieval_cache_ttl`                                                    | 300.0                                   | L2 结果缓存 TTL（秒）                          |
+| `retrieval_cache_max_size`                                               | 256                                     | L2 结果缓存条目上限                             |
 
 ### `GraphConfig`（图增强，默认关闭）
 
-| 字段 | 默认 | 含义 |
-|---|---|---|
-| `enabled` | `False` | 图路是否参与混合检索 |
-| `extractor` | `None` | `None`→LLM 抽取器；字符串→LiteLLM；实例→直接用 |
-| `pmi_weight` / `strength_weight` / `weight_scale` | 0.6 / 0.4 / 9.0 | 边权公式，落在 1–10 |
-| `build_chunk_graph` | `True` | 是否投影到 chunk 图 |
-| `max_chunks_per_entity` | 64 | 单个实体最多贡献的 chunk 数（防 hub 爆炸） |
-| `chunk_neighbor_hops` / `chunk_neighbor_weight` / `chunk_neighbor_limit` | 1 / 0.5 / 32 | chunk 图扩散 |
-| `seed_entity_limit` / `neighbor_hops` / `neighbor_weight` | 8 / 1 / 0.5 | 实体扩散 |
-| `query_extraction` | `False` | 查询期是否也调抽取器 |
-| `deduplicate_seen_chunks` | `False` | WeKnora `filterSeenChunk` 去重 |
+| 字段                                                                       | 默认              | 含义                                |
+| ------------------------------------------------------------------------ | --------------- | --------------------------------- |
+| `enabled`                                                                | `False`         | 图路是否参与混合检索                        |
+| `extractor`                                                              | `None`          | `None`→LLM 抽取器；字符串→LiteLLM；实例→直接用 |
+| `pmi_weight` / `strength_weight` / `weight_scale`                        | 0.6 / 0.4 / 9.0 | 边权公式，落在 1–10                      |
+| `build_chunk_graph`                                                      | `True`          | 是否投影到 chunk 图                     |
+| `max_chunks_per_entity`                                                  | 64              | 单个实体最多贡献的 chunk 数（防 hub 爆炸）       |
+| `chunk_neighbor_hops` / `chunk_neighbor_weight` / `chunk_neighbor_limit` | 1 / 0.5 / 32    | chunk 图扩散                         |
+| `seed_entity_limit` / `neighbor_hops` / `neighbor_weight`                | 8 / 1 / 0.5     | 实体扩散                              |
+| `query_extraction`                                                       | `False`         | 查询期是否也调抽取器                        |
+| `deduplicate_seen_chunks`                                                | `False`         | WeKnora `filterSeenChunk` 去重      |
 
 ### `MultimodalConfig`（OCR + VLM）
 
-| 字段 | 默认 | 含义 |
-|---|---|---|
-| `ocr_engine` | `None` | `"auto"` 首个已装引擎；`"none"` 关闭；实例直接用 |
-| `ocr_languages` / `tesseract_languages` | `("ch","en")` / `("eng",)` | 语言包 |
-| `vlm` | `None` | LiteLLM 模型标识 / 实例 / `None` 跳过 |
-| `vlm_prompt` | 见 §4.2 | 面向检索的转写+描述提示词 |
-| `vlm_max_tokens` / `vlm_temperature` / `vlm_num_retries` | 512 / 0.0 / 3 | VLM 参数 |
-| `pdf_dpi` / `max_pdf_pages` | 200 / `None` | PDF 栅格化 |
-| `extraction_max_workers` | 4 | 页级并发 |
+| 字段                                                       | 默认                         | 含义                                |
+| -------------------------------------------------------- | -------------------------- | --------------------------------- |
+| `ocr_engine`                                             | `None`                     | `"auto"` 首个已装引擎；`"none"` 关闭；实例直接用 |
+| `ocr_languages` / `tesseract_languages`                  | `("ch","en")` / `("eng",)` | 语言包                               |
+| `vlm`                                                    | `None`                     | LiteLLM 模型标识 / 实例 / `None` 跳过     |
+| `vlm_prompt`                                             | 见 §4.2                     | 面向检索的转写+描述提示词                     |
+| `vlm_max_tokens` / `vlm_temperature` / `vlm_num_retries` | 512 / 0.0 / 3              | VLM 参数                            |
+| `pdf_dpi` / `max_pdf_pages`                              | 200 / `None`               | PDF 栅格化                           |
+| `extraction_max_workers`                                 | 4                          | 页级并发                              |
 
 ---
 
@@ -950,19 +987,19 @@ uv run poe test     # pytest
 
 ### 关键文件
 
-| 文件 | 作用 |
-|---|---|
-| `src/raglite/_parsers.py` | 解析引擎注册表（扩展 #1） |
-| `src/raglite/_multimodal.py` | OCR + VLM（扩展 #2） |
-| `src/raglite/_iterative_search.py` | 二次检索（扩展 #3） |
-| `src/raglite/_incremental.py` | 增量索引（扩展 #4） |
-| `src/raglite/_router.py` | 意图路由（扩展 #5） |
-| `src/raglite/_cache.py` | 分层缓存（扩展 #6） |
-| `src/raglite/_eval_generation.py` | 生成端评估（扩展 #7） |
-| `src/raglite/_graph.py` | 图增强（扩展 #8） |
-| `bench_beir_graph.py` | BEIR 六臂消融 |
-| `bench_graph_ab.py` | 自建题集 A/B |
-| `bench_results.json` | 唯一落盘延迟来源 |
+| 文件                                 | 作用               |
+| ---------------------------------- | ---------------- |
+| `src/raglite/_parsers.py`          | 解析引擎注册表（扩展 #1）   |
+| `src/raglite/_multimodal.py`       | OCR + VLM（扩展 #2） |
+| `src/raglite/_iterative_search.py` | 二次检索（扩展 #3）      |
+| `src/raglite/_incremental.py`      | 增量索引（扩展 #4）      |
+| `src/raglite/_router.py`           | 意图路由（扩展 #5）      |
+| `src/raglite/_cache.py`            | 分层缓存（扩展 #6）      |
+| `src/raglite/_eval_generation.py`  | 生成端评估（扩展 #7）     |
+| `src/raglite/_graph.py`            | 图增强（扩展 #8）       |
+| `bench_beir_graph.py`              | BEIR 六臂消融        |
+| `bench_graph_ab.py`                | 自建题集 A/B         |
+| `bench_results.json`               | 唯一落盘延迟来源         |
 
 ### 复现命令
 
