@@ -98,3 +98,7 @@ bench_log.txt
 
 # WorkBuddy workspace data
 .workbuddy/
+
+# Personal job-search documents: kept locally, deliberately never published.
+# The repository is public, so resume/interview-prep material is excluded from history.
+*简历*.md
