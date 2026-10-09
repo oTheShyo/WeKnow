@@ -1,9 +1,12 @@
 """Retrieval-augmented generation."""
 
+import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator, Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import AbstractContextManager
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -310,12 +313,21 @@ def _run_tool(
     config: RAGLiteConfig,
     *,
     metadata_filter: MetadataFilter | None = None,
+    db_scope: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> tuple[str, list[ChunkSpan]]:
     """
     Run a single tool to search the knowledge base.
 
     Returns the tool_id and the raw chunk_spans (before formatting/limiting).
+
+    `db_scope` wraps only the knowledge-base search below, never the LLM round-trips: the server
+    shares one database across threads, so it must serialise the searches, but it must *not* hold
+    that serialisation across the (slow) model calls or the whole UI waits behind an answer.
     """
+    # A no-op context manager when the caller does not share a database across threads.
+    null_scope: Callable[[], AbstractContextManager[None]] = contextlib.nullcontext
+    scope = db_scope or null_scope
+
     if tool_call.function.name == "search_knowledge_base":
         try:
             query = json.loads(tool_call.function.arguments)["query"]
@@ -380,8 +392,11 @@ def _run_tool(
                         tool_calls,
                         retrieved_chunk_spans.extend,
                         config,
-                        messages=messages,
-                        metadata_filter=metadata_filter,
+                        context=_ToolContext(
+                            messages=messages,
+                            metadata_filter=metadata_filter,
+                            db_scope=db_scope,
+                        ),
                     )
                 )
                 # Keep a span if it contains at least one chunk we have not seen before.
@@ -404,11 +419,21 @@ def _run_tool(
         kwargs["config"] = config
         if metadata_filter is not None:
             kwargs["metadata_filter"] = metadata_filter
-        chunk_spans = retrieve_context(**kwargs)
+        with scope():
+            chunk_spans = retrieve_context(**kwargs)
         # Return ID and data so the main function can aggregate and limit them
         return tool_call.id, chunk_spans
     error_message = f"Unknown function {tool_call.function.name}."
     raise ValueError(error_message)
+
+
+@dataclass(frozen=True)
+class _ToolContext:
+    """The optional, non-call-specific inputs shared by every tool invocation in one round."""
+
+    messages: list[dict[str, str]] | None = None
+    metadata_filter: MetadataFilter | None = None
+    db_scope: Callable[[], AbstractContextManager[None]] | None = None
 
 
 def _run_tools(
@@ -416,8 +441,7 @@ def _run_tools(
     on_retrieval: Callable[[list[ChunkSpan]], None] | None,
     config: RAGLiteConfig,
     *,
-    messages: list[dict[str, str]] | None,
-    metadata_filter: MetadataFilter | None = None,
+    context: _ToolContext,
 ) -> list[dict[str, Any]]:
     """Run tools in parallel, limit the total context, then format messages."""
     tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
@@ -426,7 +450,13 @@ def _run_tools(
     # We use the _run_tool helper to fetch data concurrently
     with ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(_run_tool, tool_call, config, metadata_filter=metadata_filter)
+            executor.submit(
+                _run_tool,
+                tool_call,
+                config,
+                metadata_filter=context.metadata_filter,
+                db_scope=context.db_scope,
+            )
             for tool_call in tool_calls
         ]
 
@@ -441,7 +471,7 @@ def _run_tools(
             raise ValueError(error_message) from e
 
     # 2. Limit Context (Global limiting across all tools)
-    tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config, messages=messages)
+    tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config, messages=context.messages)
 
     # 3. Formatting & Callbacks
     tool_messages: list[dict[str, Any]] = []
@@ -526,8 +556,16 @@ def rag(
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
+    db_scope: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> Iterator[str]:
-    """Run retrieval-augmented generation with the given messages and config."""
+    """Run retrieval-augmented generation with the given messages and config.
+
+    `db_scope` is an optional context manager factory that callers use to serialise database
+    access. Embedders who share one database across threads (the web server) pass a lock here;
+    single-threaded callers (the CLI) leave it `None`. It is entered only around the
+    database-touching work, so the LLM round-trips — which are slow and never touch the database —
+    do not block other readers.
+    """
     working = list(messages)
     chunks = yield from _stream_rag_response(working, config)
     response = stream_chunk_builder(chunks, working)
@@ -540,8 +578,11 @@ def rag(
                 tool_calls,
                 on_retrieval,
                 config,
-                messages=working,
-                metadata_filter=metadata_filter,
+                context=_ToolContext(
+                    messages=working,
+                    metadata_filter=metadata_filter,
+                    db_scope=db_scope,
+                ),
             )
         )
         follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]
@@ -574,8 +615,7 @@ async def async_rag(
                 tool_calls,
                 on_retrieval,
                 config,
-                messages=working,
-                metadata_filter=metadata_filter,
+                context=_ToolContext(messages=working, metadata_filter=metadata_filter),
             )
         )
         follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]

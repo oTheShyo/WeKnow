@@ -17,8 +17,13 @@ import tempfile
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from queue import SimpleQueue
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -51,6 +56,17 @@ def _task_update(task_id: str, **fields: Any) -> None:
 def _sse(payload: dict[str, Any]) -> str:
     """Serialize a payload for an SSE data line (single line, UTF-8)."""
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+@contextlib.contextmanager
+def _db_lock() -> Iterator[None]:
+    """Serialise one unit of database work behind the process-wide lock.
+
+    `threading.Lock` is itself a context manager, but wrapping it keeps the type simple for callers
+    typed against `AbstractContextManager[None]`.
+    """
+    with _DB_LOCK:
+        yield
 
 
 # DuckDB allows a single writer at a time, and the SQLAlchemy connection pool hands out a new
@@ -269,51 +285,107 @@ def search(request: SearchRequest) -> dict[str, Any]:
     return {"results": results}
 
 
+def _serialize_sources(spans: list[Any]) -> list[dict[str, Any]]:
+    """Render retrieved chunk spans as the JSON payload the frontend cites."""
+    return [
+        {
+            "index": i + 1,
+            "filename": span.document.filename,
+            "document_id": str(span.document.id),
+            "text": str(span)[:800],
+        }
+        for i, span in enumerate(spans)
+    ]
+
+
+@dataclass
+class _AnswerStream:
+    """Cross-thread plumbing for one streaming answer.
+
+    The producer thread owns `queue` and `failure`; the response generator (a different thread,
+    since Starlette iterates a sync generator in a threadpool) drains the queue and reads `failure`
+    once the producer signals completion by putting `None`.
+    """
+
+    queue: SimpleQueue[str | None]
+    failure: list[str]
+
+
+def _produce_answer(
+    messages: list[dict[str, Any]],
+    *,
+    config: Any,
+    on_retrieval: Callable[[list[Any]], None],
+    stream: _AnswerStream,
+) -> None:
+    """Stream the answer, serialising only the database work.
+
+    `rag` interleaves two kinds of work: agentic retrieval rounds that touch the database, and LLM
+    calls (comprehension + answer generation) that do not. Holding the process-wide database lock
+    for the *whole* answer is what froze the UI: an answer takes tens of seconds here, and every
+    other request queued behind it for that entire time (measured: `/api/documents` went from ~6 ms
+    idle to ~5-12 s while an answer streamed), so the page could not repaint.
+
+    Instead the lock is handed to `rag` as a `db_scope`, which enters it only around the actual
+    knowledge-base searches. The slow model round-trips run with the database free.
+    """
+    from weknow import rag
+
+    queue, failure = stream.queue, stream.failure
+    try:
+        for token in rag(
+            messages,
+            on_retrieval=on_retrieval,
+            config=config,
+            db_scope=lambda: _db_lock(),
+        ):
+            queue.put(token)
+    except Exception as exc:  # noqa: BLE001
+        failure.append(str(exc)[:300])
+    finally:
+        queue.put(None)
+
+
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> StreamingResponse:
     """Stream a RAG answer as server-sent events, then the retrieved sources."""
     config = _get_config()
-    chunk_spans: list[Any] = []
     messages = [m for m in request.messages if m.get("content")]
+    # Written by the producer thread below and read after it finishes, so the answer's citations
+    # survive outside `stream()`.
+    retrieved: list[Any] = []
 
     def stream() -> Any:
-        from weknow import rag
-
-        # `rag` is a generator that interleaves DB access (the agentic retrieval rounds) with pure
-        # LLM calls, and the two cannot be separated from outside. Hold the process-wide lock for
-        # the whole answer: this server is single-user, so serialising concurrent answers costs
-        # nothing, whereas letting two answers interleave their retrieval rounds deadlocks DuckDB
-        # (observed: the server stopped answering within seconds of an upload).
-        #
-        # The first token arrives only after the whole agentic retrieval loop has run, which is tens
-        # of seconds on a slow endpoint. Emit a status event just before the first token so the UI
-        # can say what it has been waiting for instead of appearing frozen.
-        announced = False
+        stream_state = _AnswerStream(queue=SimpleQueue(), failure=[])
 
         def on_retrieval(spans: list[Any]) -> None:
             if spans:
-                chunk_spans.extend(spans)
+                retrieved.extend(spans)
 
-        with _DB_LOCK:
-            try:
-                for token in rag(messages, on_retrieval=on_retrieval, config=config):
-                    if not announced:
-                        announced = True
-                        yield _sse({"status": f"已检索到 {len(chunk_spans)} 段上下文，正在生成回答…"})
-                    yield _sse({"token": token})
-            except Exception as exc:  # noqa: BLE001
-                yield _sse({"error": str(exc)[:300]})
-                return
-        sources = [
-            {
-                "index": i + 1,
-                "filename": span.document.filename,
-                "document_id": str(span.document.id),
-                "text": str(span)[:800],
-            }
-            for i, span in enumerate(chunk_spans)
-        ]
-        yield _sse({"sources": sources})
+        threading.Thread(
+            target=_produce_answer,
+            args=(messages,),
+            kwargs={
+                "config": config,
+                "on_retrieval": on_retrieval,
+                "stream": stream_state,
+            },
+            daemon=True,
+        ).start()
+
+        announced = False
+        while True:
+            item = stream_state.queue.get()
+            if item is None:
+                break
+            if not announced:
+                announced = True
+                yield _sse({"status": f"已检索到 {len(retrieved)} 段上下文，正在生成回答…"})
+            yield _sse({"token": item})
+        if stream_state.failure:
+            yield _sse({"error": stream_state.failure[0]})
+            return
+        yield _sse({"sources": _serialize_sources(retrieved)})
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
