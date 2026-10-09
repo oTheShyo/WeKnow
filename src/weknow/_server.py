@@ -284,9 +284,22 @@ def chat(request: ChatRequest) -> StreamingResponse:
         # the whole answer: this server is single-user, so serialising concurrent answers costs
         # nothing, whereas letting two answers interleave their retrieval rounds deadlocks DuckDB
         # (observed: the server stopped answering within seconds of an upload).
+        #
+        # The first token arrives only after the whole agentic retrieval loop has run, which is tens
+        # of seconds on a slow endpoint. Emit a status event just before the first token so the UI
+        # can say what it has been waiting for instead of appearing frozen.
+        announced = False
+
+        def on_retrieval(spans: list[Any]) -> None:
+            if spans:
+                chunk_spans.extend(spans)
+
         with _DB_LOCK:
             try:
-                for token in rag(messages, on_retrieval=chunk_spans.extend, config=config):
+                for token in rag(messages, on_retrieval=on_retrieval, config=config):
+                    if not announced:
+                        announced = True
+                        yield _sse({"status": f"已检索到 {len(chunk_spans)} 段上下文，正在生成回答…"})
                     yield _sse({"token": token})
             except Exception as exc:  # noqa: BLE001
                 yield _sse({"error": str(exc)[:300]})
@@ -304,7 +317,15 @@ def chat(request: ChatRequest) -> StreamingResponse:
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
-        stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Proxies (including the local one on this machine) buffer responses unless told not
+            # to, which would deliver the whole answer in one chunk and destroy the streaming feel.
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 

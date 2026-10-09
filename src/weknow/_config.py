@@ -259,6 +259,11 @@ class RAGLiteConfig:
     # list[Chunk], or list[ChunkSpan].
     search_method: SearchMethod = field(default=_vector_search, compare=False)
     self_query: bool = False
+    # Maximum number of LLM round-trips the agentic retrieval loop may make before it must answer.
+    # Each round is a full completion against the LLM, so on a slow endpoint this dominates the
+    # time to first token: measured with a 46 char/s endpoint, 3 rounds cost ~30 s before the first
+    # answer token appears, while the retrieval itself takes ~2.4 s. Set to 1 to force a single
+    # tool call followed directly by the answer.
     agentic_iterations: int = 3
     # Hybrid search config: RRF weights for the vector and keyword rankings.
     hybrid_vector_weight: float = 0.75

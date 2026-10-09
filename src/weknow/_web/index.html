@@ -80,6 +80,7 @@
   .btn-send { background: var(--accent); color: #fff; border: none; border-radius: var(--radius); padding: 0 22px; font-size: 14px; cursor: pointer; }
   .btn-send:disabled { opacity: .5; cursor: not-allowed; }
   .typing { color: var(--text-2); font-size: 13px; }
+  .typing .elapsed { margin-left: 8px; font-variant-numeric: tabular-nums; color: var(--text-3, #9aa3b2); }
 
   /* ── 检索测试 ── */
   .st-wrap { max-width: 860px; margin: 0 auto; padding: 24px; height: 100%; display: flex; flex-direction: column; gap: 16px; }
@@ -282,7 +283,14 @@ async function send() {
   addMsg("user", q);
   history.push({ role: "user", content: q });
   const bubble = addMsg("bot", "");
-  bubble.innerHTML = `<span class="typing">检索知识库并生成回答…</span>`;
+  // The first token only arrives after the whole agentic retrieval loop, which is tens of seconds
+  // on a slow endpoint. Show a live counter so the wait is visibly progressing, not frozen.
+  const started = Date.now();
+  bubble.innerHTML = `<span class="typing">检索知识库…<b class="elapsed">0.0s</b></span>`;
+  const ticker = setInterval(() => {
+    const el = bubble.querySelector(".elapsed");
+    if (el) el.textContent = ((Date.now() - started) / 1000).toFixed(1) + "s";
+  }, 100);
   $("srcEmpty")?.remove();
   $("srcPanel").querySelectorAll(".src-item").forEach(x => x.remove());
 
@@ -305,7 +313,9 @@ async function send() {
         const payload = line.slice(6);
         if (payload === "[DONE]") continue;
         const ev = JSON.parse(payload);
-        if (ev.token) {
+        if (ev.status) {
+          bubble.innerHTML = `<span class="typing">${esc(ev.status)}<b class="elapsed">0.0s</b></span>`;
+        } else if (ev.token) {
           answer += ev.token;
           bubble.textContent = answer;
           msgs.scrollTop = msgs.scrollHeight;
@@ -330,6 +340,7 @@ async function send() {
   } catch (e) {
     bubble.textContent = "⚠️ 请求失败：" + e.message;
   } finally {
+    clearInterval(ticker);
     busy = false; sendBtn.disabled = false;
   }
 }

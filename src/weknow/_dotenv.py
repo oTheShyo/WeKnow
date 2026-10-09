@@ -141,6 +141,7 @@ def config_from_environ(
         (f"{prefix}LLM_CONTEXT_SIZE", "llm_context_size"),
         (f"{prefix}EMBEDDER_DIMENSION", "embedder_dimension"),
         (f"{prefix}EMBEDDER_BATCH_SIZE", "embedder_batch_size"),
+        (f"{prefix}AGENTIC_ITERATIONS", "agentic_iterations"),
     ):
         raw = os.environ.get(var)
         if raw:
