@@ -228,6 +228,12 @@ class RAGLiteConfig:
         )
     )
     embedder_normalize: bool = True
+    # Maximum number of strings per embedding request. Provider gateways commonly cap this:
+    # DashScope's text-embedding models reject more than 25 inputs (the error message misleadingly
+    # says 20), while the historical default of 96 is fine for OpenAI-compatible endpoints without
+    # such a cap. `None` resolves the size from the provider prefix (see
+    # `_embed.resolve_embedder_batch_size`); set it explicitly for any gateway with a different cap.
+    embedder_batch_size: int | None = None
     # Chunk config used to partition documents into chunks.
     chunk_max_size: int = 2048  # Max number of characters per chunk.
     # Document processing config. None = default processor.

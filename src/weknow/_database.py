@@ -432,6 +432,11 @@ class ChunkEmbedding(SQLModel, table=True):
     def set_embedding_dim(cls, dim: int) -> None:
         """Modify the embedding column's dimension after class definition."""
         cls.__table__.c["embedding"].type.dim = dim  # type: ignore[attr-defined]
+        cls._embedding_dim = dim
+
+    # The live embedding dimension, mirrored here so bulk-insert helpers can render `FLOAT[N]`
+    # casts without re-deriving it from the column type.
+    _embedding_dim: int = -1
 
 
 class IndexMetadata(SQLModel, table=True):

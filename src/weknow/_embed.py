@@ -170,19 +170,79 @@ def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> Fl
     return embeddings
 
 
+# Provider gateways cap how many strings one embedding request may carry. DashScope (Alibaba
+# Bailian) rejects more than 25, and its error text claims 20 — so the number here is measured,
+# not read off the documentation. Anything not listed keeps the historical default.
+_EMBEDDER_BATCH_CAPS: dict[str, int] = {"dashscope": 25}
+_DEFAULT_EMBEDDER_BATCH_SIZE = 96
+
+# Substrings that identify a "too many inputs in one request" rejection, used to decide whether a
+# failed batch is worth splitting rather than propagating.
+_BATCH_SIZE_ERROR_HINTS = (
+    "batch size",
+    "batch_size",
+    "too many",
+    "maximum batch",
+    "at most",
+    "not be larger than",
+)
+
+
+def resolve_embedder_batch_size(config: RAGLiteConfig | None = None) -> int:
+    """Return how many strings to send per embedding request.
+
+    An explicit `config.embedder_batch_size` always wins. Otherwise the provider prefix decides:
+    providers known to cap the batch size get their measured cap, everything else keeps the
+    upstream default. An unknown gateway that caps lower is handled at runtime by
+    `embed_strings_without_late_chunking`, which splits a rejected batch in half.
+    """
+    config = config or RAGLiteConfig()
+    if config.embedder_batch_size is not None:
+        return max(1, config.embedder_batch_size)
+    provider = config.embedder.split("/", 1)[0].strip().lower()
+    return _EMBEDDER_BATCH_CAPS.get(provider, _DEFAULT_EMBEDDER_BATCH_SIZE)
+
+
+def _looks_like_batch_size_error(exc: BaseException) -> bool:
+    """Return whether an embedding failure looks like a batch-size rejection."""
+    message = str(exc).lower()
+    return any(hint in message for hint in _BATCH_SIZE_ERROR_HINTS)
+
+
+def _embed_string_batch_resilient(string_batch: list[str], *, config: RAGLiteConfig) -> FloatMatrix:
+    """Embed a batch, halving it when the endpoint rejects it for being too large.
+
+    This makes an unknown provider cap self-healing instead of fatal: the first request fails, the
+    batch is split, and the halves are tried (recursively) until they fit. A single string that
+    still fails is propagated, so genuine errors are never masked.
+    """
+    try:
+        return _embed_string_batch(string_batch, config=config)
+    except Exception as exc:
+        if len(string_batch) <= 1 or not _looks_like_batch_size_error(exc):
+            raise
+        midpoint = len(string_batch) // 2
+        return np.vstack(
+            [
+                _embed_string_batch_resilient(string_batch[:midpoint], config=config),
+                _embed_string_batch_resilient(string_batch[midpoint:], config=config),
+            ]
+        )
+
+
 def embed_strings_without_late_chunking(
     strings: list[str], *, config: RAGLiteConfig | None = None
 ) -> FloatMatrix:
     """Embed a list of text strings in batches."""
     config = config or RAGLiteConfig()
-    batch_size = 96
+    batch_size = resolve_embedder_batch_size(config)
     batch_range = (
         partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True, leave=False)
         if len(strings) > batch_size
         else range
     )
     batch_embeddings = [
-        _embed_string_batch(strings[i : i + batch_size], config=config)
+        _embed_string_batch_resilient(strings[i : i + batch_size], config=config)
         for i in batch_range(0, len(strings), batch_size)
     ]
     string_embeddings = np.vstack(batch_embeddings)

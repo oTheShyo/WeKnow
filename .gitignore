@@ -67,6 +67,8 @@ dist/
 
 # RAGLite
 *.db
+# Databases moved aside during migrations.
+*.db.bak*
 
 # Ruff
 .ruff_cache/

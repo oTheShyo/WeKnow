@@ -1,12 +1,14 @@
 """Index documents."""
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 from filelock import FileLock
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -31,6 +33,101 @@ from weknow._typing import MetadataValue
 
 METADATA_EXCLUDED_FIELDS = ["filename", "uri", "url", "size", "created", "modified"]
 
+# DuckDB's `executemany` binds a `FLOAT[N]` parameter one Python value at a time, which costs
+# roughly a microsecond *per element* — a 1024-dimensional vector therefore takes over a second
+# per row (measured: 1185 ms/row at dim=1024, 310 ms/row at dim=256, i.e. linear in the dimension).
+# A single multi-row `INSERT ... VALUES` statement with the vectors written as array literals goes
+# through the regular SQL parser instead and costs ~8 µs per element, ~150x faster end to end.
+# Rows are chunked to keep the generated statement from growing without bound. The same cap is
+# reused when querying which documents already exist, purely to keep those `IN (...)` lists small.
+_EMBEDDING_INSERT_CHUNK = 128
+_EXISTING_ID_QUERY_BATCH = 128
+
+
+def _render_embedding_row(chunk_id: str, embedding: Any, dim: int) -> str:
+    """Render one `(chunk_id, embedding)` row as a SQL literal.
+
+    The values are inlined rather than bound on purpose: binding a `FLOAT[N]` parameter costs
+    ~1 us per element, whereas a literal goes through the SQL parser at ~8 ns per element. This is
+    the entire point of the helper, hence the "string-based query construction".
+    """
+    vector = np.ravel(np.asarray(embedding, dtype=np.float32))
+    rendered = ",".join(repr(float(value)) for value in vector.tolist())
+    escaped_id = chunk_id.replace("'", "''")  # The chunk id is a UUID, but escape it anyway.
+    return f"('{escaped_id}', [{rendered}]::FLOAT[{dim}])"
+
+
+def _insert_chunk_embeddings_fast(
+    session: Session,
+    embeddings: list[list[ChunkEmbedding]],
+    *,
+    dim: int,
+    chunk_size: int = _EMBEDDING_INSERT_CHUNK,
+) -> None:
+    """Insert chunk embeddings with multi-row `INSERT ... VALUES` statements.
+
+    The caller is responsible for flushing the document and chunk rows first, so that the foreign
+    keys the embeddings reference already exist.
+
+    Parameters
+    ----------
+    session
+        The session to insert through.
+    embeddings
+        One list of chunk embedding records per chunk.
+    dim
+        The embedding dimension to cast the literals to.
+    chunk_size
+        The maximum number of rows per statement.
+    """
+    rows = [
+        (str(record.chunk_id), record.embedding)
+        for records in embeddings
+        for record in records
+    ]
+    for start in range(0, len(rows), chunk_size):
+        batch = rows[start : start + chunk_size]
+        values = ", ".join(_render_embedding_row(cid, emb, dim) for cid, emb in batch)
+        statement = f"INSERT INTO chunk_embedding (chunk_id, embedding) VALUES {values}"  # noqa: S608
+        session.execute(text(statement))
+    session.expire_all()
+
+
+def _chunk_embedding_dim() -> int:
+    """Return the configured embedding dimension, or -1 when it is not pinned down."""
+    dim = getattr(ChunkEmbedding, "_embedding_dim", -1)
+    return dim if isinstance(dim, int) else -1
+
+
+def _write_chunk_embeddings(
+    session: Session,
+    embeddings: list[list[ChunkEmbedding]],
+    *,
+    write: Callable[[Session, list[list[ChunkEmbedding]]], None] | None,
+    batch_size: int,
+    pending: int,
+) -> int:
+    """Write one document's chunk embeddings and return the new unflushed-row count.
+
+    When `write` is set (DuckDB) the rows go through `_insert_chunk_embeddings_fast`; binding a
+    `FLOAT[N]` parameter through the ORM costs roughly a microsecond per element instead, so a
+    single 1024-dimensional row would take over a second. Otherwise the historical ORM path is
+    kept, batched every `batch_size` rows.
+    """
+    if write is not None:
+        # The chunks must exist before the embeddings can reference them.
+        session.flush()
+        write(session, embeddings)
+        session.expunge_all()  # Release memory of flushed changes.
+        return 0
+    for records in embeddings:
+        session.add_all(records)
+        pending += len(records)
+        if pending >= batch_size:
+            session.flush()  # Flush changes to the database.
+            session.expunge_all()  # Release memory of flushed changes.
+            pending = 0
+    return pending
 
 def _get_database_metadata(
     session: Session | None = None,
@@ -44,35 +141,45 @@ def _get_database_metadata(
 
 
 def _aggregate_metadata_from_documents(
-    documents: list[Document],
+    metadata: list[dict[str, Any]],
     metadata_excluded_fields: list[str] = METADATA_EXCLUDED_FIELDS,
 ) -> dict[str, set[MetadataValue]]:
-    """Aggregate metadata values from all documents."""
-    metadata: dict[str, set[MetadataValue]] = {}
-    for doc in documents:
-        for key, value in doc.metadata_.items():
+    """Aggregate the given documents' metadata into a `{name: values}` mapping."""
+    aggregated: dict[str, set[MetadataValue]] = {}
+    for metadata_ in metadata:
+        for key, value in metadata_.items():
             if key in metadata_excluded_fields:
                 continue
-            if key not in metadata:
-                metadata[key] = set()
+            if key not in aggregated:
+                aggregated[key] = set()
             if isinstance(value, list):
-                metadata[key].update(value)
+                aggregated[key].update(value)
             else:
-                metadata[key].add(value)
-    return metadata
+                aggregated[key].add(value)
+    return aggregated
 
 
 def _update_metadata_from_documents(
     session: Session,
-    documents: list[Document],
+    metadata: list[dict[str, Any]],
 ) -> None:
-    """Update or add metadata records."""
-    if not documents:
+    """Update or add metadata records.
+
+    Parameters
+    ----------
+    session
+        The session to write through.
+    metadata
+        The raw `metadata_` mapping of every inserted document. Mappings are passed rather than
+        `Document` instances because the embedding writer releases the ORM instances mid-insert
+        (`expunge_all`), which would make attribute access on them raise `DetachedInstanceError`.
+    """
+    if not metadata:
         return
-    metadata = _aggregate_metadata_from_documents(documents=documents)
+    aggregated = _aggregate_metadata_from_documents(metadata=metadata)
     existing_metadata = {record.name: record for record in _get_database_metadata(session=session)}
     # Update or add metadata records.
-    for key, values in metadata.items():
+    for key, values in aggregated.items():
         # Update
         if key in existing_metadata:
             result = existing_metadata[key]
@@ -160,7 +267,7 @@ def _create_chunk_records(
 MAX_DEFAULT_WORKERS = 4  # Prevents oversubscription and high memory usage.
 
 
-def insert_documents(  # noqa: C901, PLR0912
+def insert_documents(  # noqa: C901
     documents: list[Document],
     *,
     max_workers: int | None = None,
@@ -194,11 +301,12 @@ def insert_documents(  # noqa: C901, PLR0912
         return
 
     # Skip documents that are already in the database.
-    batch_size = 128
     with Session(engine := create_database_engine(config := config or RAGLiteConfig())) as session:
         existing_doc_ids: set[str] = set()
-        for i in range(0, len(documents), batch_size):
-            doc_id_batch = [doc.id for doc in documents[i : i + batch_size]]
+        for i in range(0, len(documents), _EXISTING_ID_QUERY_BATCH):
+            doc_id_batch = [
+                doc.id for doc in documents[i : i + _EXISTING_ID_QUERY_BATCH]
+            ]
             existing_doc_ids.update(
                 session.exec(select(Document.id).where(col(Document.id).in_(doc_id_batch))).all()
             )
@@ -236,7 +344,19 @@ def insert_documents(  # noqa: C901, PLR0912
         futures = [
             executor.submit(partial(_create_chunk_records, config=config), doc) for doc in documents
         ]
-        num_unflushed_embeddings = 0
+        # DuckDB's parameter binding makes the ORM path quadratic in the embedding dimension; on
+        # that dialect the embedding rows are written as literals instead (see the helpers above).
+        write = (
+            partial(
+                _insert_chunk_embeddings_fast,
+                dim=_chunk_embedding_dim(),
+                chunk_size=_EMBEDDING_INSERT_CHUNK,
+            )
+            if engine.dialect.name == "duckdb"
+            else None
+        )
+        pending_embeddings = 0
+        metadata_records: list[dict[str, Any]] = []
         for future in as_completed(futures):
             try:
                 document_record, chunk_records, chunk_embedding_records_list = future.result()
@@ -245,18 +365,20 @@ def insert_documents(  # noqa: C901, PLR0912
                 session.rollback()  # Cancel uncommitted changes.
                 error_message = f"Error processing document: {e}"
                 raise ValueError(error_message) from e
+            # Capture the metadata before the embedding writer releases its ORM instances.
+            metadata_records.append(document_record.metadata_)
             session.add(document_record)
             session.add_all(chunk_records)
-            for chunk_embedding_records in chunk_embedding_records_list:
-                session.add_all(chunk_embedding_records)
-                num_unflushed_embeddings += len(chunk_embedding_records)
-            if num_unflushed_embeddings >= batch_size:
-                session.flush()  # Flush changes to the database.
-                session.expunge_all()  # Release memory of flushed changes.
-                num_unflushed_embeddings = 0
+            pending_embeddings = _write_chunk_embeddings(
+                session,
+                chunk_embedding_records_list,
+                write=write,
+                batch_size=_EMBEDDING_INSERT_CHUNK,
+                pending=pending_embeddings,
+            )
             pbar.update()
         # Update metadata table.
-        _update_metadata_from_documents(documents=documents, session=session)
+        _update_metadata_from_documents(metadata=metadata_records, session=session)
         session.commit()
         if engine.dialect.name == "duckdb":
             # DuckDB does not automatically update its keyword search index [1], so we do it

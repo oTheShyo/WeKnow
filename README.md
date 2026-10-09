@@ -1,507 +1,167 @@
-[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTE3IDE2VjdsLTYgNU0yIDlWOGwxLTFoMWw0IDMgOC04aDFsNCAyIDEgMXYxNGwtMSAxLTQgMmgtMWwtOC04LTQgM0gzbC0xLTF2LTFsMy0zIi8+PC9zdmc+)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/superlinear-ai/raglite) [![Open in GitHub Codespaces](https://img.shields.io/static/v1?label=GitHub%20Codespaces&message=Open&color=blue&logo=github)](https://github.com/codespaces/new/superlinear-ai/raglite)
+# WeKnow
 
-# 🥤 RAGLite
+> 一个面向**个人知识库**的检索增强生成（RAG）问答系统：文档进、答案出、引用可追溯。
+> 检索内核基于开源项目 [RAGLite](https://github.com/superlinear-ai/raglite) **1.1.1** 的深度研读与二次开发，
+> 架构设计参考腾讯 [WeKnora](https://github.com/Tencent/WeKnora) 与 [LightRAG](https://github.com/HKUDS/LightRAG) 的公开思路。
 
-RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with DuckDB or PostgreSQL.
+WeKnow = **RAGLite 的检索内核** + **8 项自研工程扩展** + **一个可离线运行的 Web 前端** + **单容器部署**。
+不引入独立向量数据库（不是 FAISS / Milvus / Qdrant / Chroma），向量与关键词索引都放在关系型数据库里。
 
-## Features
+---
 
-##### Configurable
+## 这是什么
 
-- 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
-- 💾 Choose either [DuckDB](https://duckdb.org) or [PostgreSQL](https://github.com/postgres/postgres) as a keyword & vector search database
-- 🥇 Choose any reranker with [rerankers](https://github.com/AnswerDotAI/rerankers), including multilingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
+| | 说明 |
+|---|---|
+| **输入** | PDF / DOCX / PPTX / XLSX / EPUB / Markdown / 图片 / 扫描件等 28 类格式（内置解析器；docx·pptx·xlsx·epub 用标准库解 OOXML/OCF，零额外依赖） |
+| **处理** | 三层切分（句子 → 块元 → 块）→ 多向量 late-chunking 嵌入 → 入库 |
+| **检索** | 向量路（HNSW）与关键词路（BM25）并行召回 → RRF 融合 → Cross-Encoder 重排 → 按原文邻接回拼 chunk span |
+| **输出** | 流式回答 + 引用来源（可点回原文切片） |
+| **存储** | **默认 DuckDB**（`vss` 扩展给 HNSW、`fts` 扩展给 BM25）；备选 **PostgreSQL + pgvector** |
+| **入口** | FastAPI + SSE 单页前端（`weknow serve`），另有 CLI / MCP / Chainlit |
+| **部署** | 单容器 Docker Compose，`.env` 集中配置，数据库落挂载卷 |
 
-##### Fast and permissive
+---
 
-- ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch) or [LangChain](https://github.com/langchain-ai/langchain))
-- 🚀 Acceleration with Metal on macOS, and CUDA on Linux and Windows
+## 快速开始
 
-##### Unhobbled
+需要 Python 3.10–3.13。推荐用 [uv](https://docs.astral.sh/uv/) 管理环境。
 
-- 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
-- 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
-- ✏️ Optimal sentence splitting with [wtpsplit-lite](https://github.com/superlinear-ai/wtpsplit-lite) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
-- ✂️ Optimal [semantic chunking](https://www.youtube.com/watch?v=8OJC21T2SL4&t=1930s) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
-- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([FTS](https://duckdb.org/docs/stable/extensions/full_text_search)+[VSS](https://duckdb.org/docs/stable/extensions/vss); [tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector))
-- 💭 [Adaptive retrieval](https://arxiv.org/abs/2403.14403) where the LLM decides whether to and what to retrieve based on the query
-- 💰 Improved cost and latency with a [prompt caching-aware message array structure](https://platform.openai.com/docs/guides/prompt-caching)
-- 🍰 Improved output quality with [Anthropic's long-context prompt format](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips)
-- 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
+```bash
+# 1. 装依赖（核心依赖都在 pyproject.toml 里，一条命令装齐）
+uv sync
 
-##### Extensible
+# 2. 配端点：复制模板，填上你的模型 Key
+cp .env.example .env
+#    必填两项：LLM 与 Embedder。两者可以来自完全不同的厂商与端点 ——
+#    provider 前缀（openai/ dashscope/ ollama/ …）决定读哪个环境变量。
 
-- 🔌 A built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that any MCP client like [Claude desktop](https://claude.ai/download) can connect with
-- 💬 Optional customizable ChatGPT-like frontend for [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams) with [Chainlit](https://github.com/Chainlit/chainlit)
-- ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
-- 🔎 Optional high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/) for PDFs, images, DOCX, and PPTX with automatic image descriptions
-- ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
-
-## Installing
-
-> [!TIP]
-> 🚀 If you want to use local models, it is recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
-> ```sh
-> # Configure which llama-cpp-python precompiled binary to install (⚠️ not every combination is available):
-> LLAMA_CPP_PYTHON_VERSION=0.3.9
-> PYTHON_VERSION=310|311|312
-> ACCELERATOR=metal|cu121|cu122|cu123|cu124
-> PLATFORM=macosx_11_0_arm64|linux_x86_64|win_amd64
-> 
-> # Install llama-cpp-python:
-> pip install "https://github.com/abetlen/llama-cpp-python/releases/download/v$LLAMA_CPP_PYTHON_VERSION-$ACCELERATOR/llama_cpp_python-$LLAMA_CPP_PYTHON_VERSION-cp$PYTHON_VERSION-cp$PYTHON_VERSION-$PLATFORM.whl"
-> ```
-
-Install RAGLite with:
-
-```sh
-pip install raglite
+# 3. 起服务
+uv run weknow serve            # → http://127.0.0.1:8000
 ```
 
-To add support for a customizable ChatGPT-like frontend, use the `chainlit` extra:
+打开浏览器即可：**知识库**标签拖动上传文档，**对话**标签提问并看到流式回答与引用来源，
+**检索测试**标签直接看每一路的召回切片与得分。
 
-```sh
-pip install raglite[chainlit]
-```
-
-To add support for filetypes other than PDF, use the `pandoc` extra:
-
-```sh
-pip install raglite[pandoc]
-```
-
-To add support for high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/), install `mistralai`:
-
-```sh
-pip install mistralai
-```
-
-To add support for evaluation, use the `ragas` extra:
-
-```sh
-pip install raglite[ragas]
-```
-
-## Using
-
-### Overview
-
-1. [Configuring RAGLite](#1-configuring-raglite)
-2. [Inserting documents](#2-inserting-documents)
-3. [Retrieval-Augmented Generation (RAG)](#3-retrieval-augmented-generation-rag)
-4. [Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
-5. [Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
-6. [Running a Model Context Protocol (MCP) server](#6-running-a-model-context-protocol-mcp-server)
-7. [Serving a customizable ChatGPT-like frontend](#7-serving-a-customizable-chatgpt-like-frontend)
-
-### 1. Configuring RAGLite
-
-> [!TIP]
-> 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [Unsloth's collection](https://huggingface.co/unsloth)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
-
-> [!TIP]
-> 💾 You can create a PostgreSQL database in a few clicks at [neon.tech](https://neon.tech).
-
-First, configure RAGLite with your preferred DuckDB or PostgreSQL database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
-
-```python
-from raglite import RAGLiteConfig
-
-# Example 'remote' config with a PostgreSQL database and an OpenAI LLM:
-my_config = RAGLiteConfig(
-    db_url="postgresql://my_username:my_password@my_host:5432/my_database",
-    llm="gpt-4o-mini",  # Or any LLM supported by LiteLLM
-    embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM
-)
-
-# Example 'local' config with a DuckDB database and a llama.cpp LLM:
-my_config = RAGLiteConfig(
-    db_url="duckdb:///raglite.db",
-    llm="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
-    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512", # More than 512 tokens degrades bge-m3's performance
-)
-```
-
-You can also configure [any reranker supported by rerankers](https://github.com/AnswerDotAI/rerankers):
-
-```python
-from rerankers import Reranker
-
-# Example remote API-based reranker:
-my_config = RAGLiteConfig(
-    db_url="postgresql://my_username:my_password@my_host:5432/my_database"
-    reranker=Reranker("rerank-v3.5", model_type="cohere", api_key=COHERE_API_KEY, verbose=0)  # Multilingual
-)
-
-# Example local cross-encoder reranker per language (this is the default):
-my_config = RAGLiteConfig(
-    db_url="duckdb:///raglite.db",
-    reranker={
-        "en": Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank", verbose=0),  # English
-        "other": Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank", verbose=0),  # Other languages
-    }
-)
-```
-
-Self-query is also supported, allowing the LLM to automatically generate and apply metadata filters to refine search results based on the user's input. To enable self-query, set `self_query=True` in your `RAGLiteConfig`:
-
-```python
-my_config = RAGLiteConfig(
-    db_url="duckdb:///raglite.db",
-    llm="gpt-4o-mini",
-    embedder="text-embedding-3-large",
-    self_query=True,  # Enable self-query
-)
-```
-
-### 2. Inserting documents
-
-> [!TIP]
-> ✍️ To insert documents other than PDF, install the `pandoc` extra with `pip install raglite[pandoc]`.
-
-> [!TIP]
-> 🔎 For higher-quality document processing with automatic image descriptions, install `mistralai` and configure it as follows:
-> ```python
-> from raglite import RAGLiteConfig, MistralOCRConfig
+> **首次运行会下载切分模型**：句子切分用 Segment any Text（`sat-1l-sm` 的 ONNX 权重约 **399 MB**）。
+> 国内网络请保留 `.env` 里的 `HF_ENDPOINT=https://hf-mirror.com`；无网机器需提前离线预置到 Hugging Face 缓存。
 >
-> my_config = RAGLiteConfig(
->     document_processor=MistralOCRConfig(
->         include_image_descriptions=True,  # Describe images, charts, and diagrams as text
->         image_types=frozenset({"chart", "diagram", "photo", "table", "logo", "icon"}),  # Custom image categories
->         exclude_image_types=frozenset({"logo", "icon"}),  # Filter out specific types from the output
->     ),
-> )
-> ```
-> The `image_types` parameter defines the categories that Mistral classifies each image into — you can use the defaults or provide your own domain-specific types. Use `exclude_image_types` to filter out any classified types that are not useful for retrieval.
+> **配置只有一处**：`src/weknow/_dotenv.py` 的 `config_from_environ()`。所有入口（CLI / Web / Chainlit / MCP）都走它；
+> 模型能力（上下文长度、向量维度）**首次运行自动探测并写回 `.env`**，不用手填。
 
-Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
+### 常用命令
 
-```python
-# Insert documents given their file path
-from pathlib import Path
-from raglite import Document, insert_documents
-
-documents = [
-    Document.from_path(Path("On the Measure of Intelligence.pdf")),
-    Document.from_path(Path("Special Relativity.pdf")),
-]
-insert_documents(documents, config=my_config)
-
-# Insert documents given their text/plain or text/markdown content
-content = """
-# ON THE ELECTRODYNAMICS OF MOVING BODIES
-## By A. EINSTEIN  June 30, 1905
-It is known that Maxwell...
-"""
-documents = [
-    Document.from_text(content, author="Einstein", topic="physics", year=1905)
-]
-insert_documents(documents, config=my_config)
+```bash
+uv run weknow --help                 # 查看全部子命令与参数
+uv run weknow serve --port 8080      # 起 Web 前端（WeKnora 风格）
+uv run weknow mcp                    # 以 MCP server 方式暴露检索（供 Claude 等客户端连接）
+uv run weknow chainlit               # 备选的 Chainlit 前端（需 uv sync --extra chainlit）
+uv run weknow bench                  # 跑检索基准
 ```
 
-> [!TIP]
-> 📝 Documents can include metadata by passing keyword arguments to `Document.from_text()` or `Document.from_path()`. This metadata can later be used for filtering during retrieval.
-> For list values, metadata is stored as-is (e.g. `domain=["open", "music"]`).
+按需装可选能力（**核心功能不需要**）：
 
-You may also want to expand the document metadata before insertion:
-
-```python
-from typing import Annotated, Literal
-from pydantic import Field
-from raglite import expand_document_metadata
-
-# Expand the documents' metadata.
-metadata_fields = {
-    "title": Annotated[str, Field(..., description="Document title.")],
-    "author": Annotated[str, Field(..., description="Primary author.")],
-    "topics": Annotated[list[Literal["A", "B", "C"]], Field(..., description="Key themes.")],
-}
-documents = list(expand_document_metadata(documents, metadata_fields, config=my_config))
-
-# Insert documents given their text/plain or text/markdown content
-insert_documents(documents, config=my_config)
+```bash
+uv sync --extra server               # FastAPI 前端（uv sync 默认不含，serve 需要它）
+uv sync --extra chainlit             # Chainlit 前端
+uv pip install 'weknow[multimodal]'  # 离线 OCR（RapidOCR）+ PDF 栅格化（PyMuPDF）
+uv pip install 'weknow[pandoc]'      # Pandoc 解析引擎
+uv pip install 'weknow[ragas]'       # RAGAS 端到端评测
 ```
 
-### 3. Retrieval-Augmented Generation (RAG)
+---
 
-#### 3.1 Adaptive RAG
-
-Now you can run an adaptive RAG pipeline that consists of adding the user prompt to the message history and streaming the LLM response:
-
-```python
-from raglite import rag
-
-# Create a user message
-messages = []  # Or start with an existing message history
-messages.append({
-    "role": "user",
-    "content": "How is intelligence measured?"
-})
-
-# Adaptively decide whether to retrieve and then stream the response
-chunk_spans = []
-stream = rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=my_config)
-for update in stream:
-    print(update, end="")
-
-# Access the documents referenced in the RAG context
-documents = [chunk_span.document for chunk_span in chunk_spans]
-```
-
-The LLM will adaptively decide whether to retrieve information based on the complexity of the user prompt. If retrieval is necessary, the LLM generates the search query and RAGLite applies hybrid search and reranking to retrieve the most relevant chunk spans (each of which is a list of consecutive chunks). The retrieval results are sent to the `on_retrieval` callback and are appended to the message history as a tool output. Finally, the assistant response is streamed and appended to the message history.
-
-#### 3.2 Programmable RAG
-
-If you need manual control over the RAG pipeline, you can run a basic but powerful pipeline that consists of retrieving the most relevant chunk spans with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
-
-```python
-from raglite import add_context, rag, retrieve_context, vector_search
-
-# Choose a search method
-from dataclasses import replace
-my_config = replace(my_config, search_method=vector_search)  # Or `hybrid_search`, `search_and_rerank_chunks`, ...
-
-# Retrieve relevant chunk spans with the configured search method
-user_prompt = "How is intelligence measured?"
-chunk_spans = retrieve_context(
-    query=user_prompt, 
-    num_chunks=5, 
-    metadata_filter={"author": "Einstein"},  # Optional: filter by metadata
-    config=my_config
-)
-
-# Append a RAG instruction based on the user prompt and context to the message history
-messages = []  # Or start with an existing message history
-messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
-
-# Stream the RAG response and append it to the message history
-stream = rag(messages, config=my_config)
-for update in stream:
-    print(update, end="")
-
-# Access the documents referenced in the RAG context
-documents = [chunk_span.document for chunk_span in chunk_spans]
-```
-
-> [!TIP]
-> 🥇 Reranking can significantly improve the output quality of a RAG application. To add reranking to your application: first search for a larger set of 20 relevant chunks, then rerank them with a [rerankers](https://github.com/AnswerDotAI/rerankers) reranker, and finally keep the top 5 chunks.
-
-RAGLite also offers more advanced control over the individual steps of a full RAG pipeline:
-
-1. Searching for relevant chunks with keyword, vector, or hybrid search
-2. Retrieving the chunks from the database
-3. Reranking the chunks and selecting the top 5 results
-4. Extending the chunks with their neighbors and grouping them into chunk spans
-5. Converting the user prompt to a RAG instruction and appending it to the message history
-6. Streaming an LLM response to the message history
-7. Accessing the cited documents from the chunk spans
-
-A full RAG pipeline is straightforward to implement with RAGLite:
-
-```python
-# Search for chunks
-from raglite import hybrid_search, keyword_search, vector_search
-
-user_prompt = "How is intelligence measured?"
-chunk_ids_vector, _ = vector_search(user_prompt, num_results=20, config=my_config)
-chunk_ids_keyword, _ = keyword_search(user_prompt, num_results=20, config=my_config)
-chunk_ids_hybrid, _ = hybrid_search(
-    user_prompt, num_results=20, metadata_filter={"topic": "physics"}, config=my_config
-)  # Filter results to only include chunks from documents with topic="physics" (works with any search method)
-
-# Multi-value filter in one field uses OR semantics:
-chunk_ids_or, _ = hybrid_search(
-    user_prompt,
-    num_results=20,
-    metadata_filter={"domain": ["open", "music"]},
-    config=my_config,
-)  # Returns chunks where domain includes "open" OR "music".
-
-# Retrieve chunks
-from raglite import retrieve_chunks
-
-chunks_hybrid = retrieve_chunks(chunk_ids_hybrid, config=my_config)
-
-# Rerank chunks and keep the top 5 (optional, but recommended)
-from raglite import rerank_chunks
-
-chunks_reranked = rerank_chunks(user_prompt, chunks_hybrid, config=my_config)
-chunks_reranked = chunks_reranked[:5]
-
-# Extend chunks with their neighbors and group them into chunk spans
-from raglite import retrieve_chunk_spans
-
-chunk_spans = retrieve_chunk_spans(chunks_reranked, config=my_config)
-
-# Append a RAG instruction based on the user prompt and context to the message history
-from raglite import add_context
-
-messages = []  # Or start with an existing message history
-messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
-
-# Stream the RAG response and append it to the message history
-from raglite import rag
-
-stream = rag(messages, config=my_config)
-for update in stream:
-    print(update, end="")
-
-# Access the documents referenced in the RAG context
-documents = [chunk_span.document for chunk_span in chunk_spans]
-```
-
-### 4. Computing and using an optimal query adapter
-
-RAGLite can compute and apply an [optimal closed-form query adapter](src/raglite/_query_adapter.py) to the prompt embedding to improve the output quality of RAG. To benefit from this, first generate a set of evals with `insert_evals` and then compute and store the optimal query adapter with `update_query_adapter`:
-
-```python
-# Improve RAG with an optimal query adapter
-from raglite import insert_evals, update_query_adapter
-
-insert_evals(num_evals=100, config=my_config)
-update_query_adapter(config=my_config)  # From here, every vector search will use the query adapter
-```
-
-### 5. Evaluation of retrieval and generation
-
-If you installed the `ragas` extra, you can use RAGLite to answer the evals and then evaluate the quality of both the retrieval and generation steps of RAG using [Ragas](https://github.com/explodinggradients/ragas):
-
-```python
-# Evaluate retrieval and generation
-from raglite import answer_evals, evaluate, insert_evals
-
-insert_evals(num_evals=100, config=my_config)
-answered_evals_df = answer_evals(num_evals=10, config=my_config)
-evaluation_df = evaluate(answered_evals_df, config=my_config)
-```
-
-### 6. Running a Model Context Protocol (MCP) server
-
-RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented with [FastMCP](https://github.com/jlowin/fastmcp) that exposes a `search_knowledge_base` [tool](https://github.com/jlowin/fastmcp?tab=readme-ov-file#tools). To use the server:
-
-1. Install [Claude desktop](https://claude.ai/download)
-2. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) so that Claude desktop can start the server
-3. Configure Claude desktop to use `uv` to start the MCP server with:
+## 架构一览
 
 ```
-raglite \
-    --db-url duckdb:///raglite.db \
-    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
-    mcp install
+接口层    Web(SSE) · CLI · MCP server · Chainlit
+             │
+   ┌─────────┴─────────┐
+在线检索（读）        离线索引（写）
+ 意图路由 → 缓存命中   │ 解析引擎注册表 → 三层切分
+ ↓ 未命中             │      ↓
+ 三路召回：向量 / 关键词 / 图 │ 多向量嵌入（late chunking）
+ ↓                    │      ↓
+ RRF 融合 → 重排 → chunk span │ 内容 Hash 增量（只写变化的文档）
+ ↓                    │
+ 低置信度二次检索      │
+ └─────────┬─────────┘
+存储层    DuckDB（HNSW + BM25） 或 PostgreSQL + pgvector
+模型层    LiteLLM（任意 provider）· llama.cpp 本地量化 · CUDA/Metal 加速
+横切      评测（RAGAS / 自研 ROUGE-L·BLEU / BEIR 基准）
 ```
 
-To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
+**全部 8 项自研扩展**（每一项都有独立提交与单测）：
 
-```sh
-export OPENAI_API_KEY=sk-...
-raglite \
-    --llm gpt-4o-mini \
-    --embedder text-embedding-3-large \
-    mcp install
+| # | 能力 | 入口 | 默认 |
+|---|---|---|---|
+| 1 | 文档解析引擎注册表（`(engine, file_type) → parser` + 三级回退，内置 28 类格式） | `_parsers.py` | 开 |
+| 2 | 多模态 OCR + VLM（离线 ONNX + 视觉模型，双路独立降级） | `_multimodal.py` | 关 |
+| 3 | 低置信度二次检索（rerank 阈值触发扩池重召回，两轮取优） | `_iterative_search.py` | 条件开（需挂重排器） |
+| 4 | 内容 Hash 增量索引（只重写变化的文档） | `_incremental.py` | 开 |
+| 5 | 查询意图路由（微秒级启发式，零额外 LLM 调用） | `_router.py` | 开 |
+| 6 | 分层缓存（检索结果 TTL+LRU，入库/删除自动失效） | `_cache.py` | 开 |
+| 7 | 生成端评估（零依赖 ROUGE-L / BLEU） | `_eval_generation.py` | 关 |
+| 8 | 图增强检索（实体图 → chunk 图投影，作为 RRF 第三路） | `_graph.py` | **关**（见下） |
+
+**图增强检索为什么默认关闭**：在 BEIR 两个官方数据集上做过 6 臂消融。NFCorpus 上图路低权重时召回有显著小增益
+（R@100 **+0.0058**，95% CI [+0.0025, +0.0096]）但 top-10 精度与基线不可区分；**换到 SciFact 结论翻转**
+（w=0.1 时 nDCG@10 **−0.0401**）。**收益不可跨语料移植**，因此默认关闭、不做泛化宣称。
+关键词基线本身经过校准：BEIR NFCorpus nDCG@10 = **0.3178**、SciFact = **0.673**，与 Anserini 公开复现值对齐。
+
+---
+
+## 配置
+
+**只有一个配置文件 `.env`**（已在 `.gitignore` 中）。`cp .env.example .env` 后按注释填即可，六个分组：
+LLM 端点 / Embedder 端点 / 数据库 / 重排器 / 解析引擎 / 其它。
+
+几个容易踩的点：
+
+- **LLM 与 Embedder 可以不同端点、不同 Key** —— 靠 litellm 的 provider 前缀区分（`openai/` 读 `OPENAI_API_BASE`，`dashscope/` 读 `DASHSCOPE_API_KEY`）。
+- **`RAG_RERANKER` 语义**：未设置 → 用默认重排器；**设为空 → 关闭重排**；设值 → 透传。离线环境建议关掉，因为默认重排器首次使用会联网下载权重。
+- **换 Embedder 必须重建库**：向量列是定长数组 `FLOAT[N]`，维度入库后不可变。
+- 交互式入口（CLI / Web / Chainlit）默认 `disable_default_reranker=True`，并开启模型能力自动探测。
+
+---
+
+## 部署
+
+单容器生产部署（`.env` 经 `env_file` 注入，数据库落宿主卷）：
+
+```bash
+cp .env.example .env      # 填好端点
+docker compose up -d --build
 ```
 
-Now, when you start Claude desktop you should see a 🔨 icon at the bottom right of your prompt indicating that the Claude has successfully connected with the MCP server.
+镜像内已固化 `HF_ENDPOINT=https://hf-mirror.com` 与 `LITELLM_LOCAL_MODEL_COST_MAP=True`。
+细节与常见问题见 [`部署指南.md`](部署指南.md)。
 
-When relevant, Claude will suggest to use the `search_knowledge_base` tool that the MCP server provides. You can also explicitly ask Claude to search the knowledge base if you want to be certain that it does.
+---
 
-<div align="center"><video src="https://github.com/user-attachments/assets/3a597a17-874e-475f-a6dd-cd3ccf360fb9" /></div>
+## 文档
 
-### 7. Serving a customizable ChatGPT-like frontend
+| 文档 | 内容 |
+|---|---|
+| [`WeKnow-使用指南.md`](WeKnow-使用指南.md) | 照着跑起来：三条路径选择、命令速查、常见报错 |
+| [`WeKnow-终端配置手册.md`](WeKnow-终端配置手册.md) | 终端里从零到跑通的完整操作步骤（含端点配不通的三条出路） |
+| [`WeKnow-完整教程.md`](WeKnow-完整教程.md) | 原理 + 逐项源码摘录 + 8 项扩展的实现细节 |
+| [`WeKnow-简历-架构图版.md`](WeKnow-简历-架构图版.md) | 按架构六区块组织的项目描述与能力归属索引 |
+| [`WeKnora对比-优化清单.md`](WeKnora对比-优化清单.md) | 与 WeKnora 的逐项对齐差距（含未对齐清单） |
+| [`文档解析与GraphRAG-对齐WeKnora.md`](文档解析与GraphRAG-对齐WeKnora.md) | 解析注册表与 GraphRAG 六项机制的对齐记录 |
+| [`图增强检索-BEIR评测.md`](图增强检索-BEIR评测.md) · [`图增强检索-AB评测.md`](图增强检索-AB评测.md) | 图路的基准评测与机制层 A/B |
+| [`多模态扩展-OCR+VLM.md`](多模态扩展-OCR+VLM.md) | 离线 OCR + VLM 双阶段提取 |
+| [`复现指南-实测数据.md`](复现指南-实测数据.md) | 性能数字的复现步骤与口径 |
+| [`部署指南.md`](部署指南.md) | Docker 部署、API 一览、常见问题 |
 
-If you installed the `chainlit` extra, you can serve a customizable ChatGPT-like frontend with:
+---
 
-```sh
-raglite chainlit
-```
+## 上游归属与许可
 
-The application is also deployable to [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams).
+检索内核（三层切分、多向量 late-chunking 嵌入、混合检索、RRF、重排、chunk span 回拼、自适应 RAG、
+Query Adapter、DuckDB/PostgreSQL 存储、LiteLLM 模型层、MCP server）**全部来自上游 RAGLite 1.1.1**，
+版权归 [Laurent Sorber / superlinear-ai](https://github.com/superlinear-ai/raglite) 所有，**未重写上游任何模块**。
+本仓库在此基础上做的是上表 8 项扩展、Web 前端与部署形态。上游的英文 API 教程与完整能力清单见
+[RAGLite README](https://github.com/superlinear-ai/raglite)。
 
-You can specify the database URL, LLM, and embedder directly in the Chainlit frontend, or with the CLI as follows:
-
-```sh
-raglite \
-    --db-url duckdb:///raglite.db \
-    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
-    chainlit
-```
-
-To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
-
-```sh
-OPENAI_API_KEY=sk-... raglite --llm gpt-4o-mini --embedder text-embedding-3-large chainlit
-```
-
-<div align="center"><video src="https://github.com/user-attachments/assets/a303ed4a-54cd-45ea-a2b5-86e086053aed" /></div>
-
-## Contributing
-
-<details>
-<summary>Prerequisites</summary>
-
-1. [Generate an SSH key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#generating-a-new-ssh-key) and [add the SSH key to your GitHub account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
-1. Configure SSH to automatically load your SSH keys:
-
-    ```sh
-    cat << EOF >> ~/.ssh/config
-    
-    Host *
-      AddKeysToAgent yes
-      IgnoreUnknown UseKeychain
-      UseKeychain yes
-      ForwardAgent yes
-    EOF
-    ```
-
-1. [Install Docker Desktop](https://www.docker.com/get-started).
-1. [Install VS Code](https://code.visualstudio.com/) and [VS Code's Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers). Alternatively, install [PyCharm](https://www.jetbrains.com/pycharm/download/).
-1. _Optional:_ install a [Nerd Font](https://www.nerdfonts.com/font-downloads) such as [FiraCode Nerd Font](https://github.com/ryanoasis/nerd-fonts/tree/master/patched-fonts/FiraCode) and [configure VS Code](https://github.com/tonsky/FiraCode/wiki/VS-Code-Instructions) or [PyCharm](https://github.com/tonsky/FiraCode/wiki/Intellij-products-instructions) to use it.
-
-</details>
-
-<details open>
-<summary>Development environments</summary>
-
-The following development environments are supported:
-
-1. ⭐️ _GitHub Codespaces_: click on [Open in GitHub Codespaces](https://github.com/codespaces/new/superlinear-ai/raglite) to start developing in your browser.
-1. ⭐️ _VS Code Dev Container (with container volume)_: click on [Open in Dev Containers](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/superlinear-ai/raglite) to clone this repository in a container volume and create a Dev Container with VS Code.
-1. ⭐️ _uv_: clone this repository and run the following from root of the repository:
-
-    ```sh
-    # Create and install a virtual environment
-    uv sync --python 3.10 --all-extras
-
-    # Activate the virtual environment
-    source .venv/bin/activate
-
-    # Install the pre-commit hooks
-    pre-commit install --install-hooks
-    ```
-
-1. _VS Code Dev Container_: clone this repository, open it with VS Code, and run <kbd>Ctrl/⌘</kbd> + <kbd>⇧</kbd> + <kbd>P</kbd> → _Dev Containers: Reopen in Container_.
-1. _PyCharm Dev Container_: clone this repository, open it with PyCharm, [create a Dev Container with Mount Sources](https://www.jetbrains.com/help/pycharm/start-dev-container-inside-ide.html), and [configure an existing Python interpreter](https://www.jetbrains.com/help/pycharm/configuring-python-interpreter.html#widget) at `/opt/venv/bin/python`.
-
-</details>
-
-<details open>
-<summary>Developing</summary>
-
-- This project follows the [Conventional Commits](https://www.conventionalcommits.org/) standard to automate [Semantic Versioning](https://semver.org/) and [Keep A Changelog](https://keepachangelog.com/) with [Commitizen](https://github.com/commitizen-tools/commitizen).
-- Run `poe` from within the development environment to print a list of [Poe the Poet](https://github.com/nat-n/poethepoet) tasks available to run on this project.
-- Run `uv add {package}` from within the development environment to install a run time dependency and add it to `pyproject.toml`. Add `--dev` to install a development dependency.
-- Run `uv sync --upgrade` from within the development environment to upgrade all dependencies to the latest versions allowed by `pyproject.toml`. Add `--only-dev` to upgrade the development dependencies only.
-- Run `cz bump` to bump the package's version, update the `CHANGELOG.md`, and create a git tag. Then push the changes and the git tag with `git push origin main --tags`.
-
-</details>
-
-## Star History
-
-<a href="https://star-history.dera.page/#superlinear-ai/raglite&type=Timeline">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=superlinear-ai/raglite&type=Timeline&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=superlinear-ai/raglite&type=Timeline" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=superlinear-ai/raglite&type=Timeline" />
- </picture>
-</a>
+许可证：**Mozilla Public License 2.0**（沿用上游）。
