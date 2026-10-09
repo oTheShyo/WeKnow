@@ -50,6 +50,8 @@
   .s-parse, .s-embed, .s-upload { color: var(--warn); } .s-parse .s-dot, .s-embed .s-dot, .s-upload .s-dot { background: var(--warn); animation: pulse 1.2s infinite; }
   .s-failed { color: var(--err); } .s-failed .s-dot { background: var(--err); }
   .s-duplicate { color: var(--text-2); } .s-duplicate .s-dot { background: var(--text-2); }
+  /* Progress rows are a separate tbody so a poll only repaints them, not the document list. */
+  #taskRows tr:hover td { background: transparent; }
   @keyframes pulse { 50% { opacity: .35; } }
   .btn-del { color: var(--err); background: none; border: none; cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 6px; }
   .btn-del:hover { background: #fef2f2; }
@@ -123,6 +125,7 @@
         </div>
         <table>
           <thead><tr><th style="width:45%">文件名</th><th>大小</th><th>切片数</th><th>状态</th><th style="width:70px">操作</th></tr></thead>
+          <tbody id="taskRows"></tbody>
           <tbody id="docRows"><tr class="empty-row"><td colspan="5">加载中…</td></tr></tbody>
         </table>
       </div>
@@ -202,32 +205,49 @@ async function upload(file) {
 }
 
 let pollTimer = null;
+const PENDING = ["uploading", "parsing", "embedding"];
+// Poll the in-memory task list rather than the document table: the background insert holds the
+// database lock, so a /api/documents read would queue behind it and the UI would appear frozen.
+// Only when no task is pending anymore do we read the documents once.
 async function pollUntilDone() {
   clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
+  const tick = async () => {
+    let tasks = [];
+    try { tasks = (await (await fetch("/api/tasks")).json()).tasks; } catch (e) { return; }
+    renderTasks(tasks);
+    if (tasks.some(t => PENDING.includes(t.status))) return;
+    // Nothing is inserting anymore: fold the now-committed documents into the table once.
+    clearInterval(pollTimer);
+    pollTimer = null;
     await refreshDocs();
-    const hasPending = (await (await fetch("/api/documents")).json()).tasks
-      .some(t => ["uploading","parsing","embedding"].includes(t.status));
-    if (!hasPending) clearInterval(pollTimer);
-  }, 2000);
+  };
+  await tick();
+  pollTimer = setInterval(tick, 1000);
+}
+
+function renderTasks(tasks) {
+  const pending = tasks.filter(t => PENDING.includes(t.status) || t.status === "failed" || t.status === "duplicate");
+  $("taskRows").innerHTML = pending.map(t => {
+    const [label, cls] = STATUS_MAP[t.status] || [t.status, ""];
+    const spinning = PENDING.includes(t.status);
+    const dot = spinning ? '<span class="s-dot" style="animation:pulse 1.2s infinite"></span>' : '<span class="s-dot"></span>';
+    return `<tr><td>${esc(t.filename)}</td><td>—</td><td>—</td>
+      <td><span class="status ${cls}">${dot}${label}${t.detail ? " · " + esc(t.detail) : ""}</span></td><td></td></tr>`;
+  }).join("");
+  return pending;
 }
 
 async function refreshDocs() {
   try {
     const data = await (await fetch("/api/documents")).json();
-    const rows = [];
-    for (const t of data.tasks) {
-      const [label, cls] = STATUS_MAP[t.status] || [t.status, ""];
-      rows.push(`<tr><td>${esc(t.filename)}</td><td>—</td><td>—</td>
-        <td><span class="status ${cls}"><span class="s-dot"></span>${label}${t.detail ? " · " + esc(t.detail) : ""}</span></td><td></td></tr>`);
-    }
-    for (const d of data.documents) {
-      rows.push(`<tr><td>${esc(d.filename)}</td><td>${fmtSize(d.size)}</td><td>${d.chunks}</td>
-        <td><span class="status s-ready"><span class="s-dot"></span>已就绪</span></td>
-        <td><button class="btn-del" onclick="delDoc('${d.id}')">删除</button></td></tr>`);
-    }
-    $("docRows").innerHTML = rows.length ? rows.join("") : `<tr class="empty-row"><td colspan="5">知识库为空，上传第一篇文档开始使用</td></tr>`;
+    $("docRows").innerHTML = data.documents.length
+      ? data.documents.map(d => `<tr><td>${esc(d.filename)}</td><td>${fmtSize(d.size)}</td><td>${d.chunks}</td>
+          <td><span class="status s-ready"><span class="s-dot"></span>已就绪</span></td>
+          <td><button class="btn-del" onclick="delDoc('${d.id}')">删除</button></td></tr>`).join("")
+      : `<tr class="empty-row"><td colspan="5">知识库为空，上传第一篇文档开始使用</td></tr>`;
     $("docCount").textContent = data.documents.length ? `${data.documents.length} 篇文档` : "";
+    // Rows still inserting (and any that just failed) stay above the finished documents.
+    renderTasks(data.tasks);
   } catch (e) { /* 服务未就绪时静默 */ }
 }
 async function delDoc(id) {

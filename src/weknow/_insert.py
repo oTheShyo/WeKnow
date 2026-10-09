@@ -10,9 +10,10 @@ from typing import Any
 
 import numpy as np
 from filelock import FileLock
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.orm.exc import DetachedInstanceError
 from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
@@ -157,6 +158,22 @@ def _aggregate_metadata_from_documents(
             else:
                 aggregated[key].add(value)
     return aggregated
+
+
+def _loaded_metadata(document: Document) -> dict[str, Any]:
+    """Return a document's `metadata_` mapping without triggering an ORM attribute load.
+
+    `insert_documents` may receive documents that are already detached from any session, in which
+    case `document.metadata_` raises `DetachedInstanceError`. The mapping is part of the document's
+    loaded state either way, so read it straight from the instance state when the attribute is not
+    directly available.
+    """
+    try:
+        return dict(document.metadata_ or {})
+    except DetachedInstanceError:
+        state = inspect(document)  # type: ignore[arg-type]
+        loaded = state.dict.get("metadata_") if state is not None else None
+        return dict(loaded or {})
 
 
 def _update_metadata_from_documents(
@@ -365,8 +382,11 @@ def insert_documents(  # noqa: C901
                 session.rollback()  # Cancel uncommitted changes.
                 error_message = f"Error processing document: {e}"
                 raise ValueError(error_message) from e
-            # Capture the metadata before the embedding writer releases its ORM instances.
-            metadata_records.append(document_record.metadata_)
+            # Capture the metadata before the embedding writer releases its ORM instances. Read it
+            # from `__dict__` rather than the attribute: a detached instance (which is what
+            # `Document.from_path` produces when it is not attached to the inserting session) raises
+            # `DetachedInstanceError` on attribute access, but its loaded state is still readable.
+            metadata_records.append(_loaded_metadata(document_record))
             session.add(document_record)
             session.add_all(chunk_records)
             pending_embeddings = _write_chunk_embeddings(

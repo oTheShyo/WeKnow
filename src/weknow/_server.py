@@ -91,14 +91,18 @@ class _DbSession:
         _DB_LOCK.acquire()
         return self._session
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         with contextlib.suppress(Exception):
             self._session.close()
         _DB_LOCK.release()
 
 
-def _insert_in_background(task_id: str, tmp_path: Path) -> None:
-    """Insert an uploaded document off the request path, updating the task as it goes."""
+def _insert_in_background(task_id: str, tmp_path: Path, display_name: str | None = None) -> None:
+    """Insert an uploaded document off the request path, updating the task as it goes.
+
+    `display_name` is the name the user's file had; it is kept as the document's filename because
+    the temp path the bytes landed in would otherwise become the user-visible name.
+    """
     from sqlmodel import select
 
     from weknow import Document, insert_documents
@@ -108,12 +112,18 @@ def _insert_in_background(task_id: str, tmp_path: Path) -> None:
         _task_update(task_id, status="parsing")
         config = _get_config()
         document = Document.from_path(tmp_path, config=config)
+        if display_name:
+            document.filename = display_name
+            metadata = dict(document.metadata_ or {})
+            metadata["filename"] = display_name
+            document.metadata_ = metadata
+        document_id = str(document.id)
         # `insert_documents` silently skips documents whose content hash is already present,
         # so report that case explicitly instead of claiming success.
         with _DbSession(config) as session:
             exists = (
                 session.exec(
-                    select(DocumentRow.id).where(DocumentRow.id == document.id)  # type: ignore[arg-type]
+                    select(DocumentRow.id).where(DocumentRow.id == document_id)  # type: ignore[arg-type]
                 ).first()
                 is not None
             )
@@ -123,8 +133,10 @@ def _insert_in_background(task_id: str, tmp_path: Path) -> None:
             )
             return
         _task_update(task_id, status="embedding")
+        # `document_id` was read before the insert: `insert_documents` releases its ORM instances on
+        # the way out, so touching `document.id` afterwards raises `DetachedInstanceError`.
         insert_documents([document], config=config)
-        _task_update(task_id, status="ready", detail="", document_id=str(document.id))
+        _task_update(task_id, status="ready", detail="", document_id=document_id)
     except Exception as exc:  # noqa: BLE001
         _task_update(task_id, status="failed", detail=str(exc)[:300])
     finally:
@@ -149,6 +161,21 @@ class SearchRequest(BaseModel):
 def index() -> HTMLResponse:
     """Serve the single-page frontend."""
     return HTMLResponse((_WEB_DIR / "index.html").read_text(encoding="utf-8"))
+
+
+@app.get("/api/tasks")
+def list_tasks() -> dict[str, Any]:
+    """Return the in-memory upload tasks only.
+
+    The frontend polls this while an upload is in flight. It deliberately does not touch the
+    database: the background insert thread holds the process-wide database lock for the duration
+    of the insert, so a poll that read the document table would block behind it (and, before the
+    lock existed, contend for the single DuckDB writer). Task state lives in memory, so this
+    endpoint answers immediately and never waits on the insert.
+    """
+    with _TASKS_LOCK:
+        tasks = [dict(task, task_id=task_id) for task_id, task in _TASKS.items()]
+    return {"tasks": tasks}
 
 
 @app.get("/api/documents")
@@ -198,7 +225,11 @@ async def upload_document(file: UploadFile = File(...)) -> dict[str, str]:  # ty
             "detail": "",
             "started": time.time(),
         }
-    threading.Thread(target=_insert_in_background, args=(task_id, tmp_path), daemon=True).start()
+    threading.Thread(
+        target=_insert_in_background,
+        args=(task_id, tmp_path, display_name),
+        daemon=True,
+    ).start()
     return {"task_id": task_id}
 
 
